@@ -32,10 +32,10 @@ export default function ProfilePage() {
   const joinDate = 'May 2026';
 
   const stats = [
-    { label: 'Total Scans', value: '1,482', icon: Terminal, color: 'text-primary' },
-    { label: 'Threats Blocked', value: '127', icon: AlertOctagon, color: 'text-danger' },
-    { label: 'Security Score', value: '96%', icon: Shield, color: 'text-success' },
-    { label: 'Days Active', value: '14', icon: Clock, color: 'text-secondary' },
+    { label: 'Total Scans', value: '0', icon: Terminal, color: 'text-primary' },
+    { label: 'Threats Blocked', value: '0', icon: AlertOctagon, color: 'text-danger' },
+    { label: 'Security Score', value: '0%', icon: Shield, color: 'text-success' },
+    { label: 'Days Active', value: '0', icon: Clock, color: 'text-secondary' },
   ];
 
   const badges = [

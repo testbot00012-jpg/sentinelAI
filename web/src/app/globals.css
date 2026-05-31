@@ -69,3 +69,13 @@ body {
 .scanner-line {
   animation: cyber-scanner-line 2.5s infinite linear;
 }
+
+/* Fix browser autofill styling making text invisible */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #0F172A inset !important;
+  -webkit-text-fill-color: white !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
