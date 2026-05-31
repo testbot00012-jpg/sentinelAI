@@ -1,37 +1,26 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { 
-  Shield, Terminal, Cpu, AlertOctagon, Heart, LogOut, CheckCircle2,
-  Lock, Activity, Plus, Search, AlertCircle, RefreshCw, BarChart2
+  Shield, Terminal, Cpu, AlertOctagon, Activity, 
+  CheckCircle2, RefreshCw, BarChart2, Zap, TrendingUp,
+  Lock, Globe, MessageSquare, Package
 } from 'lucide-react';
-import { useAuthStore } from '../lib/store';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { apiUrl } from '../lib/api';
+import { useAuthStore } from '@/lib/store';
+import { apiUrl } from '@/lib/api';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import Link from 'next/link';
+
+const THREAT_COLORS = ['#00E5FF', '#7C3AED', '#FF4D4D', '#FF9500'];
 
 export default function Dashboard() {
-  const router = useRouter();
-  const { user, token, logout, isAuthenticated } = useAuthStore();
-
+  const { token, user } = useAuthStore();
   const [metrics, setMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Custom scan local states
-  const [scanType, setScanType] = useState<'url' | 'sms'>('url');
-  const [scanInput, setScanInput] = useState('');
-  const [scanResult, setScanResult] = useState<any>(null);
-  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login');
-      return;
-    }
     fetchMetrics();
-  }, [isAuthenticated, router]);
+  }, []);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -39,27 +28,35 @@ export default function Dashboard() {
       const res = await fetch(apiUrl('/api/analytics/metrics'), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error("Failed to pull system diagnostic metrics.");
-      const data = await res.ok ? await res.json() : null;
-      setMetrics(data);
-    } catch (err: any) {
-      setError(err.message);
-      // Populate placeholder mock layout if server offline
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(data);
+      } else {
+        throw new Error('Failed');
+      }
+    } catch {
+      // Populate with realistic mock data
       setMetrics({
         summary: {
-          security_score: 95,
-          threats_blocked: 8,
-          total_scans: 48,
-          device_health: { battery: 88, ram: 42, storage: 61, model: "Pixel 8 Pro Client" }
+          security_score: 96,
+          threats_blocked: 127,
+          total_scans: 1482,
+          device_health: { battery: 82, ram: 38, storage: 64, model: "Sentinel Cloud Node" }
         },
         trends: [
-          { day: "Mon", score: 90 }, { day: "Tue", score: 92 }, { day: "Wed", score: 95 },
-          { day: "Thu", score: 88 }, { day: "Fri", score: 92 }, { day: "Sat", score: 95 }, { day: "Sun", score: 96 }
+          { day: 'Mon', score: 91, threats: 14 },
+          { day: 'Tue', score: 93, threats: 18 },
+          { day: 'Wed', score: 96, threats: 9 },
+          { day: 'Thu', score: 89, threats: 22 },
+          { day: 'Fri', score: 94, threats: 11 },
+          { day: 'Sat', score: 97, threats: 7 },
+          { day: 'Sun', score: 96, threats: 5 },
         ],
         threat_distribution: [
-          { name: "Phishing URLs", value: 3 },
-          { name: "Scam SMS", value: 4 },
-          { name: "Malware APKs", value: 1 }
+          { name: "Phishing URLs", value: 62 },
+          { name: "Scam SMS", value: 41 },
+          { name: "Malware APKs", value: 18 },
+          { name: "Suspicious IPs", value: 6 },
         ]
       });
     } finally {
@@ -67,348 +64,238 @@ export default function Dashboard() {
     }
   };
 
-  const handleScanSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!scanInput) return;
-    setScanning(true);
-    setScanResult(null);
+  const quickActions = [
+    { label: 'Scan URL', icon: Globe, href: '/dashboard/scanner', color: 'text-primary', bg: 'bg-primary/10 border-primary/20 hover:border-primary/50' },
+    { label: 'Analyze SMS', icon: MessageSquare, href: '/dashboard/sms', color: 'text-secondary', bg: 'bg-secondary/10 border-secondary/20 hover:border-secondary/50' },
+    { label: 'App Audit', icon: Package, href: '/dashboard/auditor', color: 'text-success', bg: 'bg-success/10 border-success/20 hover:border-success/50' },
+    { label: 'My Profile', icon: Activity, href: '/dashboard/profile', color: 'text-warning', bg: 'bg-warning/10 border-warning/20 hover:border-warning/50' },
+  ];
 
-    const scanPath = scanType === 'url' ? 'url' : 'fraud';
-    const body = scanType === 'url' ? { url: scanInput } : { content: scanInput, scan_type: 'SMS' };
+  const recentThreats = [
+    { time: '2 mins ago', type: 'Phishing URL', source: 'paypal-verify-update.net', score: '98%', action: 'Blocked', severity: 'danger' },
+    { time: '15 mins ago', type: 'SMS Scam', source: '+91 98765 01234', score: '93%', action: 'Quarantined', severity: 'warning' },
+    { time: '1 hour ago', type: 'Malware APK', source: 'Flash_Update_v4.apk', score: '99%', action: 'Blocked', severity: 'danger' },
+    { time: '3 hours ago', type: 'Suspicious IP', source: '185.220.101.47', score: '71%', action: 'Flagged', severity: 'warning' },
+    { time: '5 hours ago', type: 'Phishing URL', source: 'amaz0n-login.tk', score: '96%', action: 'Blocked', severity: 'danger' },
+  ];
 
-    try {
-      const res = await fetch(apiUrl(`/api/scan/${scanPath}`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-      setScanResult(data);
-      fetchMetrics(); // Refresh stats
-    } catch (err: any) {
-      // Offline fallback simulations
-      if (scanType === 'url') {
-        setScanResult({
-          url: scanInput,
-          status: scanInput.includes("paypal") ? "Phishing" : "Safe",
-          score: scanInput.includes("paypal") ? 88.0 : 12.0,
-          details: scanInput.includes("paypal") 
-            ? ["Flagged domain name contains high-risk string combination", "Domain not recognized by DNS roots"] 
-            : ["Clean metadata markers validated"]
-        });
-      } else {
-        setScanResult({
-          classification: scanInput.includes("winner") ? "Highly Likely Scam" : "Safe Message",
-          scam_probability: scanInput.includes("winner") ? 92.5 : 8.0,
-          explanation: scanInput.includes("winner") 
-            ? "Contains high weight scam keywords ('winner', 'lottery') and suspicious layout structure." 
-            : "No risk indices recognized."
-        });
-      }
-    } finally {
-      setScanning(false);
-    }
-  };
-
-  const COLORS = ['#00E5FF', '#7C3AED', '#FF4D4D'];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <Shield className="w-12 h-12 text-primary animate-pulse drop-shadow-[0_0_12px_#00e5ff]" />
+          <p className="text-sm text-gray-400 font-mono animate-pulse">Initializing Threat Intelligence...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative min-h-screen bg-background text-white selection:bg-primary selection:text-background">
-      {/* Sidebar Header */}
-      <nav className="glass-panel sticky top-0 z-50 border-b border-white/5 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="w-7 h-7 text-primary drop-shadow-[0_0_6px_#00e5ff]" />
-          <span className="font-extrabold text-lg tracking-wider bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            SENTINEL CONTROL PANEL
-          </span>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Welcome Banner */}
+      <div className="glass-panel rounded-2xl p-6 border-primary/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-64 h-64 bg-primary opacity-5 rounded-full blur-[80px] pointer-events-none -translate-y-1/2 translate-x-1/4" />
+        <div>
+          <h2 className="text-xl font-extrabold text-white">
+            Welcome back, <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">{user?.email?.split('@')[0] || 'Agent'}</span>
+          </h2>
+          <p className="text-sm text-gray-400 mt-1">Your cybersecurity shield is active and monitoring all vectors.</p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs font-mono text-gray-400 bg-white/5 px-2.5 py-1 rounded">
-            Agent: {user?.email || 'N/A'}
-          </span>
-          <button 
-            onClick={() => { logout(); router.push('/'); }} 
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-danger transition-colors font-bold uppercase tracking-wider"
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
+          <span className="text-sm font-bold text-success">All Systems Active</span>
+        </div>
+      </div>
+
+      {/* KPI Metrics */}
+      {metrics && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            {
+              label: 'Security Score',
+              value: `${metrics.summary.security_score}%`,
+              icon: Shield,
+              color: 'text-success',
+              bg: 'border-success/20',
+              sub: '↑ 2% this week',
+              subColor: 'text-success'
+            },
+            {
+              label: 'Threats Blocked',
+              value: metrics.summary.threats_blocked,
+              icon: AlertOctagon,
+              color: 'text-danger',
+              bg: 'border-danger/20',
+              sub: 'Last 30 days',
+              subColor: 'text-gray-500'
+            },
+            {
+              label: 'Total Scans',
+              value: metrics.summary.total_scans.toLocaleString(),
+              icon: Terminal,
+              color: 'text-primary',
+              bg: 'border-primary/20',
+              sub: '↑ 142 today',
+              subColor: 'text-primary'
+            },
+            {
+              label: 'RAM Usage',
+              value: `${metrics.summary.device_health.ram}%`,
+              icon: Cpu,
+              color: 'text-secondary',
+              bg: 'border-secondary/20',
+              sub: 'System nominal',
+              subColor: 'text-gray-500'
+            },
+          ].map((kpi, i) => (
+            <div key={i} className={`glass-panel p-5 rounded-xl border ${kpi.bg} flex flex-col gap-3`}>
+              <div className="flex justify-between items-start">
+                <span className="text-xs text-gray-500 uppercase tracking-widest font-mono leading-tight">{kpi.label}</span>
+                <kpi.icon className={`w-5 h-5 ${kpi.color} opacity-80`} />
+              </div>
+              <div className={`text-3xl font-extrabold ${kpi.color}`}>{kpi.value}</div>
+              <div className={`text-[11px] font-semibold ${kpi.subColor}`}>{kpi.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Quick Actions</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {quickActions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={`glass-panel p-4 rounded-xl border ${action.bg} flex items-center gap-3 transition-all duration-200 group`}
+            >
+              <action.icon className={`w-5 h-5 ${action.color} group-hover:scale-110 transition-transform`} />
+              <span className="text-sm font-semibold text-white">{action.label}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Area Chart */}
+        {metrics && (
+          <div className="lg:col-span-2 glass-panel p-6 rounded-2xl border-white/5">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold flex items-center gap-2 text-sm">
+                <TrendingUp className="w-4.5 h-4.5 text-primary" /> Security Score Trend
+              </h3>
+              <span className="text-xs text-gray-500 font-mono bg-white/5 px-2 py-1 rounded">Last 7 Days</span>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={metrics.trends}>
+                  <defs>
+                    <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#00E5FF" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#00E5FF" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis dataKey="day" stroke="#475569" fontSize={11} />
+                  <YAxis stroke="#475569" fontSize={11} domain={[75, 100]} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0A1028', borderColor: 'rgba(0,229,255,0.2)', borderRadius: '8px' }}
+                    labelStyle={{ color: '#00E5FF', fontWeight: 'bold', fontSize: '12px' }}
+                    itemStyle={{ color: '#94a3b8', fontSize: '11px' }}
+                  />
+                  <Area type="monotone" dataKey="score" stroke="#00E5FF" strokeWidth={2.5} fill="url(#scoreGrad)" dot={{ r: 4, fill: '#00E5FF' }} activeDot={{ r: 6 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Threat Pie */}
+        {metrics && (
+          <div className="glass-panel p-6 rounded-2xl border-white/5">
+            <h3 className="font-bold flex items-center gap-2 text-sm mb-6">
+              <BarChart2 className="w-4.5 h-4.5 text-secondary" /> Threat Distribution
+            </h3>
+            <div className="h-44 flex justify-center items-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={metrics.threat_distribution}
+                    cx="50%" cy="50%"
+                    innerRadius={45} outerRadius={70}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {metrics.threat_distribution.map((_: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={THREAT_COLORS[index % THREAT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0A1028', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 mt-2">
+              {metrics.threat_distribution.map((item: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: THREAT_COLORS[i] }} />
+                    <span className="text-gray-400">{item.name}</span>
+                  </div>
+                  <span className="font-bold text-white">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Threats Table */}
+      <div className="glass-panel p-6 rounded-2xl border-white/5 overflow-x-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-bold flex items-center gap-2 text-sm">
+            <Shield className="w-4.5 h-4.5 text-primary" /> Live Threat Intelligence Feed
+          </h3>
+          <button
+            onClick={fetchMetrics}
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-primary transition-colors"
           >
-            <LogOut className="w-4 h-4" /> Exit Console
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         </div>
-      </nav>
-
-      {/* Main Layout Area */}
-      <main className="max-w-7xl mx-auto px-6 py-10 space-y-8">
-        
-        {/* Top Summaries Widgets */}
-        {metrics && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {/* Sec Score */}
-            <div className="glass-panel p-6 rounded-xl border-white/5 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-gray-400 uppercase tracking-widest font-mono">Overall Safety Score</span>
-                <div className="text-4xl font-extrabold text-success mt-1">{metrics.summary.security_score}%</div>
-              </div>
-              <Activity className="w-10 h-10 text-success opacity-85" />
-            </div>
-
-            {/* Blocked Threats */}
-            <div className="glass-panel p-6 rounded-xl border-white/5 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-gray-400 uppercase tracking-widest font-mono">Malicious Signals Blocked</span>
-                <div className="text-4xl font-extrabold text-danger mt-1">{metrics.summary.threats_blocked}</div>
-              </div>
-              <AlertOctagon className="w-10 h-10 text-danger opacity-85" />
-            </div>
-
-            {/* Total Scans */}
-            <div className="glass-panel p-6 rounded-xl border-white/5 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-gray-400 uppercase tracking-widest font-mono">Diagnostic Scans Runs</span>
-                <div className="text-4xl font-extrabold text-primary mt-1">{metrics.summary.total_scans}</div>
-              </div>
-              <Terminal className="w-10 h-10 text-primary opacity-85" />
-            </div>
-
-            {/* Device Stats */}
-            <div className="glass-panel p-6 rounded-xl border-white/5 flex items-center justify-between">
-              <div>
-                <span className="text-xs text-gray-400 uppercase tracking-widest font-mono">Primary Endpoint Client</span>
-                <div className="text-base font-extrabold text-white mt-2 truncate max-w-[170px]">{metrics.summary.device_health.model}</div>
-                <div className="text-xs text-gray-500 font-mono">Battery: {metrics.summary.device_health.battery}%</div>
-              </div>
-              <Cpu className="w-10 h-10 text-secondary opacity-85" />
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Diagnostic Core sandbox */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="glass-panel p-8 rounded-2xl border-white/5 space-y-6">
-              <div>
-                <h2 className="text-xl font-extrabold flex items-center gap-2">
-                  <Terminal className="w-5 h-5 text-primary" /> Autonomous AI Scanner Portal
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">Submit links or text structures below to run localized diagnostics.</p>
-              </div>
-
-              {/* Selector */}
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => { setScanType('url'); setScanResult(null); }}
-                  className={`flex-1 py-3 text-xs font-bold rounded-lg border transition-all ${
-                    scanType === 'url' ? 'border-primary bg-primary/10 text-primary' : 'border-white/5 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  Phishing Link Classifier
-                </button>
-                <button 
-                  onClick={() => { setScanType('sms'); setScanResult(null); }}
-                  className={`flex-1 py-3 text-xs font-bold rounded-lg border transition-all ${
-                    scanType === 'sms' ? 'border-secondary bg-secondary/10 text-secondary' : 'border-white/5 text-gray-400 hover:text-white'
-                  }`}
-                >
-                  SMS Scam Analyzer (NLP)
-                </button>
-              </div>
-
-              {/* Input Form */}
-              <form onSubmit={handleScanSubmit} className="space-y-4">
-                <div>
-                  <label className="text-xs font-mono text-gray-400 uppercase">
-                    {scanType === 'url' ? 'Target URL string' : 'Text Message / Email content'}
-                  </label>
-                  <div className="flex gap-2 mt-1.5">
-                    <input 
-                      type="text"
-                      required
-                      value={scanInput}
-                      onChange={e => setScanInput(e.target.value)}
-                      placeholder={scanType === 'url' ? 'https://example-phishing-login.com' : 'Your OTP is 492049. Click here to confirm registration.'}
-                      className="flex-1 bg-background border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary font-mono text-gray-200"
-                    />
-                    <button 
-                      type="submit"
-                      disabled={scanning}
-                      className="px-6 py-3 bg-primary text-background font-bold text-sm rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1.5 shrink-0"
-                    >
-                      {scanning ? <RefreshCw className="w-4.5 h-4.5 animate-spin" /> : 'Run AI Scan'}
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              {/* Scan Results Layout */}
-              {scanResult && (
-                <div className="p-5 rounded-xl bg-black/40 border border-white/5 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold tracking-wide uppercase">AI Threat Verdict:</span>
-                    <span className={`px-2.5 py-1 text-xs font-extrabold uppercase rounded ${
-                      (scanResult.status === 'Phishing' || (scanResult.scam_probability && scanResult.scam_probability >= 65))
-                        ? 'bg-danger/25 text-danger animate-pulse'
-                        : scanResult.status === 'Suspicious' ? 'bg-warning/25 text-warning' : 'bg-success/25 text-success'
-                    }`}>
-                      {scanResult.status || scanResult.classification}
-                    </span>
-                  </div>
-
-                  {scanType === 'url' ? (
-                    <div className="space-y-2 text-xs font-mono text-gray-400">
-                      <p className="text-gray-300">• Target URL: <span className="text-primary">{scanResult.url}</span></p>
-                      <p>• Calculated Risk Heuristic Score: {scanResult.score}%</p>
-                      <div className="mt-3">
-                        <p className="font-bold mb-1 text-white uppercase tracking-wider">Analysis Log Details:</p>
-                        {scanResult.details?.map((detail: string, i: number) => (
-                          <p key={i} className="text-danger">• {detail}</p>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 text-xs font-mono text-gray-400">
-                      <p>• Model scam prediction rating: <span className="text-warning">{scanResult.scam_probability}%</span></p>
-                      <p className="text-gray-300 font-sans mt-2 bg-white/5 p-3 rounded leading-relaxed italic">
-                        "{scanResult.explanation}"
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Performance charts */}
-            {metrics && (
-              <div className="glass-panel p-8 rounded-2xl border-white/5">
-                <h3 className="text-lg font-bold flex items-center gap-2 mb-6">
-                  <BarChart2 className="w-5 h-5 text-secondary" /> Historical Shield Score Trends
-                </h3>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={metrics.trends}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                      <XAxis dataKey="day" stroke="#64748B" fontSize={11} />
-                      <YAxis stroke="#64748B" fontSize={11} domain={[70, 100]} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#0F172A', borderColor: 'rgba(255,255,255,0.1)' }}
-                        labelStyle={{ color: '#00E5FF', fontWeight: 'bold' }}
-                      />
-                      <Line type="monotone" dataKey="score" stroke="#00E5FF" strokeWidth={3} dot={{ r: 4 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right sidebar details */}
-          <div className="space-y-6">
-            {/* Optimization recommendations */}
-            {metrics && (
-              <div className="glass-panel p-6 rounded-xl border-white/5 space-y-4">
-                <h3 className="font-bold text-sm uppercase tracking-wider text-gray-400">Device Optimizations</h3>
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded bg-white/5 flex flex-col gap-1">
-                    <div className="flex justify-between items-center text-xs font-bold">
-                      <span>Battery Status</span>
-                      <span className="text-primary">{metrics.summary.device_health.battery}% Healthy</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 leading-normal">Suggest running dark UI profiles to extend operational spans.</p>
-                  </div>
-
-                  <div className="p-3.5 rounded bg-white/5 flex flex-col gap-1">
-                    <div className="flex justify-between items-center text-xs font-bold">
-                      <span>Memory Load</span>
-                      <span className="text-secondary">{metrics.summary.device_health.ram}% In Use</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 leading-normal">Redundant diagnostic cache directories can be cleared.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Distribution charts */}
-            {metrics && (
-              <div className="glass-panel p-6 rounded-xl border-white/5 space-y-4">
-                <h3 className="font-bold text-sm uppercase tracking-wider text-gray-400">Blocked Vector Distribution</h3>
-                <div className="h-48 flex justify-center items-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={metrics.threat_distribution}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={70}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {metrics.threat_distribution.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: 'rgba(255,255,255,0.1)' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex justify-around text-xs font-mono">
-                  {metrics.threat_distribution.map((item: any, i: number) => (
-                    <div key={i} className="flex flex-col items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                      <span className="text-gray-500">{item.name}</span>
-                      <span className="font-bold text-white">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Threats Log Table */}
-        {metrics && (
-          <div className="glass-panel p-6 rounded-2xl border-white/5 overflow-x-auto">
-            <h3 className="text-lg font-bold flex items-center gap-2 mb-4">
-              <Shield className="w-5 h-5 text-primary" /> Real-Time Threat Intel Logs
-            </h3>
-            <table className="w-full text-left text-sm text-gray-400">
-              <thead className="text-xs text-gray-500 uppercase bg-white/5">
-                <tr>
-                  <th className="px-4 py-3 rounded-tl-lg">Timestamp</th>
-                  <th className="px-4 py-3">Threat Type</th>
-                  <th className="px-4 py-3">Source Vector</th>
-                  <th className="px-4 py-3">Risk Score</th>
-                  <th className="px-4 py-3 rounded-tr-lg">Action Taken</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {/* Mock data for the threats log */}
-                {[
-                  { time: '2 mins ago', type: 'Phishing URL', source: 'http://paypal-update-login.net', score: '98%', action: 'Blocked' },
-                  { time: '15 mins ago', type: 'SMS Scam', source: '+1 (555) 019-2834', score: '92%', action: 'Quarantined' },
-                  { time: '1 hour ago', type: 'Malware APK', source: 'Update_Flash_Player.apk', score: '99%', action: 'Blocked' },
-                  { time: '3 hours ago', type: 'Suspicious IP', source: '192.168.1.104', score: '65%', action: 'Flagged' }
-                ].map((log, i) => (
-                  <tr key={i} className="hover:bg-white/5 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap">{log.time}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 bg-danger/10 text-danger rounded text-xs font-bold">{log.type}</span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-gray-300">{log.source}</td>
-                    <td className="px-4 py-3 text-warning font-bold">{log.score}</td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1 text-success text-xs font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> {log.action}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </main>
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="text-[10px] text-gray-600 uppercase tracking-widest border-b border-white/5">
+              <th className="pb-3 pl-1">Time</th>
+              <th className="pb-3">Threat Type</th>
+              <th className="pb-3 hidden md:table-cell">Source Vector</th>
+              <th className="pb-3">Risk Score</th>
+              <th className="pb-3">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {recentThreats.map((log, i) => (
+              <tr key={i} className="hover:bg-white/2 transition-colors">
+                <td className="py-3 pl-1 text-xs text-gray-500 font-mono whitespace-nowrap">{log.time}</td>
+                <td className="py-3">
+                  <span className={`px-2 py-0.5 text-xs font-bold rounded ${log.severity === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'}`}>
+                    {log.type}
+                  </span>
+                </td>
+                <td className="py-3 text-xs text-gray-400 font-mono hidden md:table-cell truncate max-w-[200px]">{log.source}</td>
+                <td className={`py-3 text-xs font-extrabold ${log.severity === 'danger' ? 'text-danger' : 'text-warning'}`}>{log.score}</td>
+                <td className="py-3">
+                  <span className="flex items-center gap-1 text-xs text-success font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {log.action}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
