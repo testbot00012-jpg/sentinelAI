@@ -6,5 +6,5 @@ DATABASE_URL = os.getenv("DATABASE_URL", "mongodb+srv://adamalok79_db_user:konda
 client = AsyncIOMotorClient(DATABASE_URL)
 database = client.sentinel_db
 
-def get_db():
+async def get_db():
     return database
