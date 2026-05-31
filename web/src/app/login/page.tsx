@@ -7,6 +7,7 @@ import { Shield, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '../../lib/store';
 import { auth as firebaseAuth } from '../../lib/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { apiUrl } from '../../lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,8 +32,8 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(firebaseAuth, formData.email, formData.password);
       const idToken = await userCredential.user.getIdToken();
 
-      // 2. Synchronize credentials with FastAPI PostgreSQL database
-      const response = await fetch('http://localhost:8000/api/auth/verify', {
+      // 2. Synchronize credentials with FastAPI backend
+      const response = await fetch(apiUrl('/api/auth/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_token: idToken })

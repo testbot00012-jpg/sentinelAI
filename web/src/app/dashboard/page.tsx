@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../lib/store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { apiUrl } from '../lib/api';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -35,7 +36,7 @@ export default function Dashboard() {
   const fetchMetrics = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/analytics/metrics', {
+      const res = await fetch(apiUrl('/api/analytics/metrics'), {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Failed to pull system diagnostic metrics.");
@@ -76,7 +77,7 @@ export default function Dashboard() {
     const body = scanType === 'url' ? { url: scanInput } : { content: scanInput, scan_type: 'SMS' };
 
     try {
-      const res = await fetch(`http://localhost:8000/api/scan/${scanPath}`, {
+      const res = await fetch(apiUrl(`/api/scan/${scanPath}`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

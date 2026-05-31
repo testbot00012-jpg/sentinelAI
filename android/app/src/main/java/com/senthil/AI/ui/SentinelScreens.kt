@@ -24,6 +24,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 // Beautiful Dark theme color palette for Jetpack Compose matching Next.js theme
 val CyberBackground = Color(0xFF050816)
@@ -135,9 +137,11 @@ fun SplashScreen(onFinish: () -> Unit) {
 
 @Composable
 fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
-    var email by remember { mutableStateOf("agent@sentinel.ai") }
-    var password by remember { mutableStateOf("admin123") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -166,6 +170,19 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
             modifier = Modifier.padding(bottom = 32.dp)
         )
 
+        if (errorMsg.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CyberDanger.copy(alpha = 0.15f))
+                    .padding(12.dp)
+            ) {
+                Text(errorMsg, color = CyberDanger, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
@@ -185,6 +202,7 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
             value = password,
             onValueChange = { password = it },
             label = { Text("Access Key") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Lock", tint = CyberPrimary) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = CyberPrimary,
@@ -199,9 +217,31 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
 
         Button(
             onClick = {
+                if (email.isBlank() || password.isBlank()) {
+                    errorMsg = "Email and password are required."
+                    return@Button
+                }
                 isLoading = true
-                // Bypass auth checking instantly for sandbox testing
-                onLoginSuccess(email, "MOCK_JWT_TOKEN")
+                errorMsg = ""
+                coroutineScope.launch {
+                    try {
+                        // 1. Sign in with Firebase Auth
+                        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                        val result = auth.signInWithEmailAndPassword(email, password).await()
+                        val idToken = result.user?.getIdToken(false)?.await()?.token
+                            ?: throw Exception("Failed to get Firebase token")
+
+                        // 2. Sync with Render backend
+                        val response = com.senthil.AI.data.SentinelApiClient.instance
+                            .verifyFirebaseToken(com.senthil.AI.data.FirebaseTokenRequest(idToken))
+
+                        onLoginSuccess(response.email, "Bearer ${response.access_token}")
+                    } catch (e: Exception) {
+                        errorMsg = e.message?.take(80) ?: "Authentication failed."
+                    } finally {
+                        isLoading = false
+                    }
+                }
             },
             colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
             shape = RoundedCornerShape(8.dp),
