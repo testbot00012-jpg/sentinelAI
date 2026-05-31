@@ -1,20 +1,29 @@
 package com.senthil.AI.data
 
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Header
+import java.util.concurrent.TimeUnit
 
 // ===== Live Backend URL (Render deployed) =====
 const val BASE_URL = "https://sentinelai-6kf0.onrender.com/"
 
 // Singleton Retrofit client
 object SentinelApiClient {
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(90, TimeUnit.SECONDS)
+        .readTimeout(90, TimeUnit.SECONDS)
+        .writeTimeout(90, TimeUnit.SECONDS)
+        .build()
+
     val instance: SentinelApiService by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(SentinelApiService::class.java)
