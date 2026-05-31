@@ -54,7 +54,7 @@ sealed class Screen {
     object URLScanner : Screen()
     object SMSAnalyzer : Screen()
     object PermissionAnalyzer : Screen()
-    object DeviceDetails : Screen()
+    object Profile : Screen()
 }
 
 @Composable
@@ -97,22 +97,116 @@ fun SentinelApp() {
                     currentScreen = Screen.Login
                 }
             )
-            is Screen.Dashboard -> DashboardScreen(
-                userEmail = userEmail,
-                onNavigate = { currentScreen = it }
-            )
-            is Screen.URLScanner -> URLScannerScreen(
-                onBack = { currentScreen = Screen.Dashboard }
-            )
-            is Screen.SMSAnalyzer -> SMSAnalyzerScreen(
-                onBack = { currentScreen = Screen.Dashboard }
-            )
-            is Screen.PermissionAnalyzer -> PermissionAnalyzerScreen(
-                onBack = { currentScreen = Screen.Dashboard }
-            )
-            is Screen.DeviceDetails -> DeviceDetailsScreen(
-                onBack = { currentScreen = Screen.Dashboard }
-            )
+            Screen.Dashboard, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile -> {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar(
+                            containerColor = CyberCard,
+                            tonalElevation = 8.dp
+                        ) {
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.Dashboard,
+                                onClick = { currentScreen = Screen.Dashboard },
+                                icon = { Icon(Icons.Default.Dashboard, contentDescription = "Home") },
+                                label = { Text("Home", fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyberPrimary,
+                                    unselectedIconColor = Color.Gray,
+                                    selectedTextColor = CyberPrimary,
+                                    unselectedTextColor = Color.Gray,
+                                    indicatorColor = CyberCard
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.URLScanner,
+                                onClick = { currentScreen = Screen.URLScanner },
+                                icon = { Icon(Icons.Default.Language, contentDescription = "URL Scan") },
+                                label = { Text("URL Scan", fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyberPrimary,
+                                    unselectedIconColor = Color.Gray,
+                                    selectedTextColor = CyberPrimary,
+                                    unselectedTextColor = Color.Gray,
+                                    indicatorColor = CyberCard
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.SMSAnalyzer,
+                                onClick = { currentScreen = Screen.SMSAnalyzer },
+                                icon = { Icon(Icons.Default.Sms, contentDescription = "SMS Scan") },
+                                label = { Text("SMS Scan", fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyberSecondary,
+                                    unselectedIconColor = Color.Gray,
+                                    selectedTextColor = CyberSecondary,
+                                    unselectedTextColor = Color.Gray,
+                                    indicatorColor = CyberCard
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.PermissionAnalyzer,
+                                onClick = { currentScreen = Screen.PermissionAnalyzer },
+                                icon = { Icon(Icons.Default.FolderSpecial, contentDescription = "Auditor") },
+                                label = { Text("Auditor", fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyberWarning,
+                                    unselectedIconColor = Color.Gray,
+                                    selectedTextColor = CyberWarning,
+                                    unselectedTextColor = Color.Gray,
+                                    indicatorColor = CyberCard
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = currentScreen == Screen.Profile,
+                                onClick = { currentScreen = Screen.Profile },
+                                icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
+                                label = { Text("Profile", fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = CyberSuccess,
+                                    unselectedIconColor = Color.Gray,
+                                    selectedTextColor = CyberSuccess,
+                                    unselectedTextColor = Color.Gray,
+                                    indicatorColor = CyberCard
+                                )
+                            )
+                        }
+                    },
+                    containerColor = CyberBackground
+                ) { innerPadding ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        when (currentScreen) {
+                            is Screen.Dashboard -> DashboardScreen(
+                                userEmail = userEmail,
+                                onNavigate = { currentScreen = it }
+                            )
+                            is Screen.URLScanner -> URLScannerScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
+                            is Screen.SMSAnalyzer -> SMSAnalyzerScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
+                            is Screen.PermissionAnalyzer -> PermissionAnalyzerScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
+                            is Screen.Profile -> ProfileScreen(
+                                userEmail = userEmail,
+                                token = token,
+                                onLogout = {
+                                    currentScreen = Screen.Login
+                                },
+                                onBackToDashboard = {
+                                    currentScreen = Screen.Dashboard
+                                }
+                            )
+                            else -> {}
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -942,11 +1036,16 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
 }
 
 @Composable
-fun DeviceDetailsScreen(onBack: () -> Unit) {
+fun ProfileScreen(
+    userEmail: String,
+    token: String,
+    onLogout: () -> Unit,
+    onBackToDashboard: () -> Unit
+) {
     val context = LocalContext.current
     
     BackHandler {
-        onBack()
+        onBackToDashboard()
     }
 
     // Read real system parameters
@@ -991,35 +1090,73 @@ fun DeviceDetailsScreen(onBack: () -> Unit) {
         String.format("%.2f GB Free / %.2f GB Total", availGb, totalGb)
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(CyberBackground)
-            .padding(16.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
-                tint = Color.White,
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Text("DEVICE SYSTEM DETAILS", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        item {
+            Text("AGENT PROFILE & SPECS", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "Verified Hardware Parameters & Diagnostic Integrity Matrix:",
-            color = Color.LightGray,
-            fontSize = 13.sp,
-            lineHeight = 18.sp
-        )
+        // Profile details card
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CyberCard)
+                    .border(1.dp, CyberPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = "Profile",
+                    tint = CyberPrimary,
+                    modifier = Modifier.size(72.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = if (userEmail.isNotEmpty()) userEmail else "agent@sentinel.ai",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "Sentinel Security Lead",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                Button(
+                    onClick = {
+                        com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                        onLogout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CyberDanger),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Logout", tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("DE-AUTHENTICATE PORTAL", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        item {
+            Text("DEVICE SPECIFICATIONS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        }
 
+        // Hardware parameters details
         val details = listOf(
             Triple("Device Model", model, CyberPrimary),
             Triple("Manufacturer", brand.uppercase(), CyberPrimary),
@@ -1031,26 +1168,24 @@ fun DeviceDetailsScreen(onBack: () -> Unit) {
             Triple("Internal Storage Disk", storageInfo, CyberPrimary)
         )
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(details) { item ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(CyberCard)
-                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                        .padding(16.dp)
-                ) {
-                    Text(item.first, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = item.second,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
+        items(details) { item ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CyberCard)
+                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                    .padding(16.dp)
+            ) {
+                Text(item.first, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = item.second,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
             }
         }
     }
