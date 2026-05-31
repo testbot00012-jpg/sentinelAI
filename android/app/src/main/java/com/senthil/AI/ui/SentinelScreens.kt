@@ -26,6 +26,16 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.app.ActivityManager
+import android.os.Environment
+import android.os.StatFs
+import android.os.Build
 
 // Beautiful Dark theme color palette for Jetpack Compose matching Next.js theme
 val CyberBackground = Color(0xFF050816)
@@ -44,6 +54,7 @@ sealed class Screen {
     object URLScanner : Screen()
     object SMSAnalyzer : Screen()
     object PermissionAnalyzer : Screen()
+    object DeviceDetails : Screen()
 }
 
 @Composable
@@ -57,9 +68,15 @@ fun SentinelApp() {
         color = CyberBackground
     ) {
         when (currentScreen) {
-            is Screen.Splash -> SplashScreen {
-                currentScreen = Screen.Login
-            }
+            is Screen.Splash -> SplashScreen(
+                onFinish = { isLoggedIn ->
+                    currentScreen = if (isLoggedIn) Screen.Dashboard else Screen.Login
+                },
+                onUserLoaded = { email, authToken ->
+                    userEmail = email
+                    token = authToken
+                }
+            )
             is Screen.Login -> LoginScreen(
                 onLoginSuccess = { email, authToken ->
                     userEmail = email
@@ -93,18 +110,39 @@ fun SentinelApp() {
             is Screen.PermissionAnalyzer -> PermissionAnalyzerScreen(
                 onBack = { currentScreen = Screen.Dashboard }
             )
+            is Screen.DeviceDetails -> DeviceDetailsScreen(
+                onBack = { currentScreen = Screen.Dashboard }
+            )
         }
     }
 }
 
 @Composable
-fun SplashScreen(onFinish: () -> Unit) {
+fun SplashScreen(
+    onFinish: (Boolean) -> Unit,
+    onUserLoaded: (String, String) -> Unit
+) {
     var visible by remember { mutableStateOf(false) }
+    val auth = remember { com.google.firebase.auth.FirebaseAuth.getInstance() }
     
     LaunchedEffect(key1 = true) {
         visible = true
+        var isLoggedIn = false
+        val currentUser = auth.currentUser
+        if (currentUser != null) {
+            try {
+                val tokenResult = currentUser.getIdToken(false).await()
+                val idToken = tokenResult.token
+                if (idToken != null) {
+                    onUserLoaded(currentUser.email ?: "", "Bearer $idToken")
+                    isLoggedIn = true
+                }
+            } catch (e: Exception) {
+                auth.signOut()
+            }
+        }
         delay(2200)
-        onFinish()
+        onFinish(isLoggedIn)
     }
 
     Box(
@@ -291,6 +329,9 @@ fun RegisterScreen(
     onRegisterSuccess: (String, String) -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
+    BackHandler {
+        onNavigateToLogin()
+    }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -470,12 +511,17 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                 Text("SENTINEL CORE", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                 Text("Device Status: Operational", color = CyberSuccess, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
-            Icon(
-                imageVector = Icons.Default.AccountCircle,
-                contentDescription = "Profile",
-                tint = CyberSecondary,
-                modifier = Modifier.size(36.dp)
-            )
+            IconButton(onClick = {
+                com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+                onNavigate(Screen.Login)
+            }) {
+                Icon(
+                    imageVector = Icons.Default.ExitToApp,
+                    contentDescription = "Logout",
+                    tint = CyberDanger,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -543,6 +589,14 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                 color = CyberWarning,
                 onClick = { onNavigate(Screen.PermissionAnalyzer) }
             )
+
+            DashboardToolCard(
+                title = "Device System Details",
+                description = "Query active hardware parameters and security levels.",
+                icon = Icons.Default.Info,
+                color = CyberSuccess,
+                onClick = { onNavigate(Screen.DeviceDetails) }
+            )
         }
     }
 }
@@ -586,6 +640,9 @@ fun DashboardToolCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun URLScannerScreen(onBack: () -> Unit) {
+    BackHandler {
+        onBack()
+    }
     var urlInput by remember { mutableStateOf("http://secure-verify-paypal.accounts.com") }
     var scanResult by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -684,6 +741,9 @@ fun URLScannerScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SMSAnalyzerScreen(onBack: () -> Unit) {
+    BackHandler {
+        onBack()
+    }
     var smsInput by remember { mutableStateOf("URGENT: Your account is suspended. Click here http://bit.ly/pay-verify") }
     var scanResult by remember { mutableStateOf<String?>(null) }
 
@@ -776,6 +836,9 @@ data class PermissionItem(val name: String, val level: String, val color: Color)
 
 @Composable
 fun PermissionAnalyzerScreen(onBack: () -> Unit) {
+    BackHandler {
+        onBack()
+    }
     val items = listOf(
         PermissionItem("BIND_ACCESSIBILITY_SERVICE", "CRITICAL RISK", CyberDanger),
         PermissionItem("RECEIVE_SMS / SEND_SMS", "HIGH RISK", CyberWarning),
@@ -838,6 +901,121 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                             .clip(RoundedCornerShape(4.dp))
                             .background(perm.color.copy(alpha = 0.15f))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeviceDetailsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    
+    BackHandler {
+        onBack()
+    }
+
+    // Read real system parameters
+    val model = remember { Build.MODEL }
+    val brand = remember { Build.MANUFACTURER }
+    val androidVersion = remember { Build.VERSION.RELEASE }
+    val sdkVersion = remember { Build.VERSION.SDK_INT }
+    val cpuAbi = remember { Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown" }
+    
+    val securityPatch = remember { 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Build.VERSION.SECURITY_PATCH
+        } else {
+            "N/A"
+        }
+    }
+
+    val batteryPercent = remember {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level >= 0 && scale > 0) (level * 100) / scale else 100
+    }
+
+    val ramInfo = remember {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        val totalGb = memoryInfo.totalMem.toDouble() / (1024 * 1024 * 1024)
+        val availGb = memoryInfo.availMem.toDouble() / (1024 * 1024 * 1024)
+        String.format("%.2f GB Available / %.2f GB Total", availGb, totalGb)
+    }
+
+    val storageInfo = remember {
+        val path = Environment.getDataDirectory()
+        val stat = StatFs(path.path)
+        val blockSize = stat.blockSizeLong
+        val totalBlocks = stat.blockCountLong
+        val availableBlocks = stat.availableBlocksLong
+        val totalGb = (totalBlocks * blockSize).toDouble() / (1024 * 1024 * 1024)
+        val availGb = (availableBlocks * blockSize).toDouble() / (1024 * 1024 * 1024)
+        String.format("%.2f GB Free / %.2f GB Total", availGb, totalGb)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CyberBackground)
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier
+                    .clickable(onClick = onBack)
+                    .size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text("DEVICE SYSTEM DETAILS", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "Verified Hardware Parameters & Diagnostic Integrity Matrix:",
+            color = Color.LightGray,
+            fontSize = 13.sp,
+            lineHeight = 18.sp
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        val details = listOf(
+            Triple("Device Model", model, CyberPrimary),
+            Triple("Manufacturer", brand.uppercase(), CyberPrimary),
+            Triple("Android OS Version", "Android $androidVersion (API $sdkVersion)", CyberSuccess),
+            Triple("Security Patch Level", securityPatch, CyberWarning),
+            Triple("Processor ABI", cpuAbi, CyberSecondary),
+            Triple("Battery Level", "$batteryPercent%", CyberSuccess),
+            Triple("System Memory (RAM)", ramInfo, CyberSecondary),
+            Triple("Internal Storage Disk", storageInfo, CyberPrimary)
+        )
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(details) { item ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CyberCard)
+                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .padding(16.dp)
+                ) {
+                    Text(item.first, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = item.second,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
                     )
                 }
             }
