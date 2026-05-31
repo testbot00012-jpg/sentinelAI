@@ -1,22 +1,6 @@
 version: '3.8'
 
 services:
-  database:
-    image: postgres:16-alpine
-    container_name: sentinel_database
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: sentinel_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -28,14 +12,12 @@ services:
     build: ./backend
     container_name: sentinel_backend
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@database:5432/sentinel_db
+      - DATABASE_URL=mongodb+srv://adamalok79_db_user:kondabot@cluster0.wjo1gru.mongodb.net/?appName=Cluster0
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=SUPER_SECRET_NEON_SENTINEL_SHIELD_KEY_2026
     ports:
       - "8000:8000"
     depends_on:
-      database:
-        condition: service_healthy
       redis:
         condition: service_started
 
@@ -60,5 +42,3 @@ services:
       - web
       - backend
 
-volumes:
-  postgres_data:

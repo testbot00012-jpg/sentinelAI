@@ -100,7 +100,7 @@ def verify_firebase_token(token: str) -> dict:
             pass
         raise JWTError(f"Firebase token verification failed natively & fallback: {str(e)}")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+async def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get_db)) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate Firebase credentials",
@@ -114,23 +114,24 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise credentials_exception
 
-    # Automatically provision SSO user in PostgreSQL local database on first check
-    user = db.query(User).filter(User.email == email).first()
+    # Automatically provision SSO user in MongoDB local database on first check
+    user = await db["users"].find_one({"email": email})
     if user is None:
-        user = User(
-            email=email,
-            hashed_password="SSO_MANAGED_PASSWORD_STUB",
-            full_name=claims.get("name", "Sentinel Agent"),
-            role="admin" if db.query(User).count() == 0 else "user"
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        count = await db["users"].count_documents({})
+        user = {
+            "email": email,
+            "hashed_password": "SSO_MANAGED_PASSWORD_STUB",
+            "full_name": claims.get("name", "Sentinel Agent"),
+            "role": "admin" if count == 0 else "user",
+            "created_at": datetime.utcnow()
+        }
+        res = await db["users"].insert_one(user)
+        user["_id"] = res.inserted_id
         
     return user
 
-def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != "admin":
+async def get_admin_user(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Requires administrative permissions"

@@ -1,11 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.db.database import engine, Base
 from app.routes import auth, scan, analytics, admin
-
-# Generate tables automatically during initial startup sequence
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Sentinel AI - Smart Mobile Security, Fraud Detection & Optimization Platform API",
