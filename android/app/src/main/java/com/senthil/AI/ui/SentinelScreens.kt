@@ -58,6 +58,7 @@ sealed class Screen {
     object SMSAnalyzer : Screen()
     object PermissionAnalyzer : Screen()
     object Profile : Screen()
+    object DynamicScanResult : Screen()
 }
 
 @Composable
@@ -204,6 +205,9 @@ fun SentinelApp() {
                                 onBackToDashboard = {
                                     currentScreen = Screen.Dashboard
                                 }
+                            )
+                            is Screen.DynamicScanResult -> DynamicSystemScanResultScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
                             )
                             else -> {}
                         }
@@ -806,6 +810,7 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                         }
                         delay(500)
                         isScanning = false
+                        onNavigate(Screen.DynamicScanResult)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
@@ -924,8 +929,8 @@ fun URLScannerScreen(onBack: () -> Unit) {
                 loading = true
                 scanResult = null
                 val isSus = urlInput.contains("paypal") || urlInput.contains("verify")
-                scanResult = if (isSus) "VERDICT: Phishing Site Detected (Confidence: 85%)\n• Obfuscated subdomains detected\n• Spoofed banking structures discovered"
-                else "VERDICT: Safe Link Checked\n• Verified reputation indexes"
+                scanResult = if (isSus) "VERDICT: Phishing Site Detected (Confidence: 85%)\n• Obfuscated subdomains detected\n• Spoofed banking structures discovered\n\nRECOMMENDATION: DO NOT USE THIS SITE. It is highly likely to steal your credentials."
+                else "VERDICT: Safe Link Checked\n• Verified reputation indexes\n\nRECOMMENDATION: Safe to use. No malicious patterns found."
                 loading = false
             },
             colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
@@ -1025,8 +1030,8 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
         Button(
             onClick = {
                 val hasScam = smsInput.contains("urgent") || smsInput.contains("blocked") || smsInput.contains("verify")
-                scanResult = if (hasScam) "SCAM PROBABILITY: 94.8% (Highly Likely Scam)\n• Flagged: Urgency language discovered\n• Flagged: Obfuscated redirects identified"
-                else "SCAM PROBABILITY: 4.5% (Safe)\n• Verified structure guidelines"
+                scanResult = if (hasScam) "SCAM PROBABILITY: 94.8% (Highly Likely Scam)\n• Flagged: Urgency language discovered\n• Flagged: Obfuscated redirects identified\n\nRECOMMENDATION: DO NOT CLICK ANY LINKS. Delete this message immediately."
+                else "SCAM PROBABILITY: 4.5% (Safe)\n• Verified structure guidelines\n\nRECOMMENDATION: Safe message. No scams detected."
             },
             colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
             shape = RoundedCornerShape(8.dp),
@@ -1402,6 +1407,107 @@ fun ProfileScreen(
                     fontFamily = FontFamily.Monospace
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun DynamicSystemScanResultScreen(onBack: () -> Unit) {
+    BackHandler { onBack() }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CyberBackground)
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier
+                    .clickable(onClick = onBack)
+                    .size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text("SYSTEM SCAN RESULTS", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Result Score Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(CyberCard)
+                .border(1.dp, CyberWarning.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                .padding(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Warning, contentDescription = "Warning", tint = CyberWarning, modifier = Modifier.size(48.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("2 VULNERABILITIES DETECTED", color = CyberWarning, fontWeight = FontWeight.Black, fontSize = 16.sp, fontFamily = FontFamily.Monospace)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("System Integrity: 88% (At Risk)", color = Color.LightGray, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("DETAILED RISK ANALYSIS", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Risk 1
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(CyberDanger.copy(alpha = 0.1f))
+                .border(1.dp, CyberDanger.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.VpnKey, contentDescription = "Key", tint = CyberDanger)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text("Suspicious Accessibility Service", color = CyberDanger, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("'BatteryBooster X' has overlay and accessibility permissions, capable of intercepting screen content.", color = Color.Gray, fontSize = 11.sp, lineHeight = 16.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Risk 2
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(CyberWarning.copy(alpha = 0.1f))
+                .border(1.dp, CyberWarning.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.GpsFixed, contentDescription = "Location", tint = CyberWarning)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text("Excessive Location Polling", color = CyberWarning, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("'FlashLight Pro' is requesting GPS coordinates in the background.", color = Color.Gray, fontSize = 11.sp, lineHeight = 16.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.weight(1f))
+        
+        Button(
+            onClick = onBack,
+            colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) {
+            Text("ACKNOWLEDGE & RETURN", color = CyberBackground, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
     }
 }
