@@ -271,7 +271,7 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.Between,
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
@@ -305,7 +305,7 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                 Text("DEVICE INTEGRITY SCORE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Between,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text("98%", color = CyberSuccess, fontSize = 48.sp, fontWeight = FontWeight.Black)
@@ -629,7 +629,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                         .background(CyberCard)
                         .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                         .padding(16.dp),
-                    horizontalArrangement = Arrangement.Between,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {

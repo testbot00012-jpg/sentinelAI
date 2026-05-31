@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Shield shape - Sentinel AI icon in cyan #00E5FF -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,18 L82,30 L82,54 C82,70 70,82 54,90 C38,82 26,70 26,54 L26,30 Z"/>
+
+    <!-- Inner shield highlight -->
+    <path
+        android:fillColor="#050816"
+        android:pathData="M54,26 L76,36 L76,54 C76,67 66,77 54,84 C42,77 32,67 32,54 L32,36 Z"/>
+
+    <!-- AI text / signal lines in cyan -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M44,50 L48,44 L54,58 L60,44 L64,50"/>
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M42,58 L66,58"/>
+
+</vector>
