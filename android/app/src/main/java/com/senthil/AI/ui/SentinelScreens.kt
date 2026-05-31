@@ -493,6 +493,31 @@ fun RegisterScreen(
 
 @Composable
 fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
+    val context = LocalContext.current
+    
+    // Read real system parameters for quick indicators
+    val batteryPercent = remember {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level >= 0 && scale > 0) (level * 100) / scale else 100
+    }
+
+    val ramPercent = remember {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        val used = memoryInfo.totalMem - memoryInfo.availMem
+        ((used.toDouble() / memoryInfo.totalMem.toDouble()) * 100).toInt()
+    }
+
+    val storagePercent = remember {
+        val path = Environment.getDataDirectory()
+        val stat = StatFs(path.path)
+        val used = stat.blockCountLong - stat.availableBlocksLong
+        ((used.toDouble() / stat.blockCountLong.toDouble()) * 100).toInt()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -561,79 +586,87 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Text("CYBER SECURITY COMMANDS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Spacer(modifier = Modifier.height(10.dp))
+        Text("SHIELD ACTIVE ENGINES", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Command tools grids
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            DashboardToolCard(
-                title = "AI URL Link Scanner",
-                description = "Extracts structure matrices to identify scam sites.",
-                icon = Icons.Default.Language,
-                color = CyberPrimary,
-                onClick = { onNavigate(Screen.URLScanner) }
-            )
+        // Active engines indicators
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary)
+            EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary)
+            EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning)
+        }
 
-            DashboardToolCard(
-                title = "SMS Scam NLP Analyzer",
-                description = "Runs local word counts & vectors checks for spam/threats.",
-                icon = Icons.Default.Sms,
-                color = CyberSecondary,
-                onClick = { onNavigate(Screen.SMSAnalyzer) }
-            )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("DEVICE UTILIZATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Spacer(modifier = Modifier.height(12.dp))
 
-            DashboardToolCard(
-                title = "Permission Threat Auditor",
-                description = "Cross references backgrounds access configurations.",
-                icon = Icons.Default.FolderSpecial,
-                color = CyberWarning,
-                onClick = { onNavigate(Screen.PermissionAnalyzer) }
-            )
-
-            DashboardToolCard(
-                title = "Device System Details",
-                description = "Query active hardware parameters and security levels.",
-                icon = Icons.Default.Info,
-                color = CyberSuccess,
-                onClick = { onNavigate(Screen.DeviceDetails) }
-            )
+        // Progress bars for RAM, Storage, and Battery on Dashboard
+        Column(
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(CyberCard)
+                .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                .padding(16.dp)
+        ) {
+            UsageProgressRow(label = "Memory (RAM)", percent = ramPercent, color = CyberSecondary)
+            UsageProgressRow(label = "Internal Storage", percent = storagePercent, color = CyberPrimary)
+            UsageProgressRow(label = "Battery Power", percent = batteryPercent, color = CyberSuccess)
         }
     }
 }
 
 @Composable
-fun DashboardToolCard(
-    title: String,
-    description: String,
-    icon: ImageVector,
-    color: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+fun EngineStatusBox(modifier: Modifier = Modifier, title: String, status: String, tint: Color) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(CyberCard)
-            .border(1.dp, color.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
+        Text(title, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = status,
+            color = tint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(color.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+                .clip(RoundedCornerShape(4.dp))
+                .background(tint.copy(alpha = 0.12f))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+fun UsageProgressRow(label: String, percent: Int, color: Color) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = icon, contentDescription = title, tint = color)
+            Text(label, color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text("$percent%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text(description, color = Color.Gray, fontSize = 11.sp, lineHeight = 14.sp)
-        }
-        Icon(imageVector = Icons.Default.ArrowForwardIos, contentDescription = "Open", tint = Color.DarkGray, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+        LinearProgressIndicator(
+            progress = percent / 100f,
+            color = color,
+            trackColor = Color.DarkGray.copy(alpha = 0.5f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+        )
     }
 }
 
