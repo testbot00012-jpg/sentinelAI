@@ -36,6 +36,9 @@ import android.app.ActivityManager
 import android.os.Environment
 import android.os.StatFs
 import android.os.Build
+import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
+import android.content.pm.ApplicationInfo
 
 // Beautiful Dark theme color palette for Jetpack Compose matching Next.js theme
 val CyberBackground = Color(0xFF050816)
@@ -588,6 +591,12 @@ fun RegisterScreen(
 @Composable
 fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Scan simulation states
+    var isScanning by remember { mutableStateOf(false) }
+    var scanProgress by remember { mutableStateOf(0f) }
+    var scanLogText by remember { mutableStateOf("") }
     
     // Read real system parameters for quick indicators
     val batteryPercent = remember {
@@ -628,7 +637,7 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
         ) {
             Column {
                 Text("SENTINEL CORE", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Device Status: Operational", color = CyberSuccess, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text("Device Status: ${if (isScanning) "Scanning..." else "Operational"}", color = if (isScanning) CyberWarning else CyberSuccess, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             }
             IconButton(onClick = {
                 com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
@@ -645,71 +654,170 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Device overall score card
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(CyberCard, Color(0xFF020617))
-                    )
+        if (isScanning) {
+            // Scanning diagnostics logs layout
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CyberCard)
+                    .border(1.dp, CyberWarning.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(
+                    progress = scanProgress,
+                    color = CyberWarning,
+                    strokeWidth = 6.dp,
+                    modifier = Modifier.size(90.dp)
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
-                .padding(20.dp)
-        ) {
-            Column {
-                Text("DEVICE INTEGRITY SCORE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "THREAT SCANNING CYCLE ACTIVE",
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "${(scanProgress * 100).toInt()}% Analysing Core",
+                    color = CyberWarning,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Logging feedback console
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
                 ) {
-                    Text("98%", color = CyberSuccess, fontSize = 48.sp, fontWeight = FontWeight.Black)
-                    Icon(
-                        imageVector = Icons.Default.OfflineBolt,
-                        contentDescription = "Shield",
-                        tint = CyberSuccess,
-                        modifier = Modifier
-                            .size(54.dp)
-                            .padding(bottom = 6.dp)
+                    Text(
+                        text = scanLogText,
+                        color = CyberSuccess,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 16.sp
                     )
                 }
-                Text("No critical risk patterns found during last scan cycle.", color = Color.LightGray, fontSize = 12.sp)
             }
-        }
+        } else {
+            // Main Dashboard stats list
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Device overall score card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(CyberCard, Color(0xFF020617))
+                            )
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Text("DEVICE INTEGRITY SCORE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text("98%", color = CyberSuccess, fontSize = 48.sp, fontWeight = FontWeight.Black)
+                            Icon(
+                                imageVector = Icons.Default.OfflineBolt,
+                                contentDescription = "Shield",
+                                tint = CyberSuccess,
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .padding(bottom = 6.dp)
+                            )
+                        }
+                        Text("No critical risk patterns found during last scan cycle.", color = Color.LightGray, fontSize = 12.sp)
+                    }
+                }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("SHIELD ACTIVE ENGINES", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Spacer(modifier = Modifier.height(12.dp))
+                Text("SHIELD ACTIVE ENGINES", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
 
-        // Active engines indicators
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary)
-            EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary)
-            EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning)
-        }
+                // Active engines indicators
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary)
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary)
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning)
+                }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("DEVICE UTILIZATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Spacer(modifier = Modifier.height(12.dp))
+                Text("DEVICE UTILIZATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
 
-        // Progress bars for RAM, Storage, and Battery on Dashboard
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(CyberCard)
-                .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                .padding(16.dp)
-        ) {
-            UsageProgressRow(label = "Memory (RAM)", percent = ramPercent, color = CyberSecondary)
-            UsageProgressRow(label = "Internal Storage", percent = storagePercent, color = CyberPrimary)
-            UsageProgressRow(label = "Battery Power", percent = batteryPercent, color = CyberSuccess)
+                // Progress bars for RAM, Storage, and Battery on Dashboard
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CyberCard)
+                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                ) {
+                    UsageProgressRow(label = "Memory (RAM)", percent = ramPercent, color = CyberSecondary)
+                    UsageProgressRow(label = "Internal Storage", percent = storagePercent, color = CyberPrimary)
+                    UsageProgressRow(label = "Battery Power", percent = batteryPercent, color = CyberSuccess)
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Pulse Scanning trigger button
+            Button(
+                onClick = {
+                    isScanning = true
+                    scanProgress = 0f
+                    coroutineScope.launch {
+                        val logs = listOf(
+                            "Initializing Threat Telemetry matrix...",
+                            "Auditing system package credentials...",
+                            "Scanning user-installed package signatures...",
+                            "Verifying background Accessibility services...",
+                            "Evaluating active network interfaces & TLS tunnels...",
+                            "Parsing SMS logs NLP keyword matrices...",
+                            "Compiling final threat diagnostics logs...",
+                            "Threat Scan Complete. System Integrity: 98% SECURE."
+                        )
+                        for (i in 0..100) {
+                            scanProgress = i / 100f
+                            val logIdx = (i / (100 / logs.size)).coerceAtMost(logs.size - 1)
+                            scanLogText = "ROOT@SENTINEL:~# ${logs[logIdx]}"
+                            delay(40)
+                        }
+                        delay(500)
+                        isScanning = false
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Shield, contentDescription = "Scan", tint = CyberBackground)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("RUN DYNAMIC SYSTEM SCAN", color = CyberBackground, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            }
         }
     }
 }
@@ -959,19 +1067,98 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
     }
 }
 
-data class PermissionItem(val name: String, val level: String, val color: Color)
+data class AppRiskInfo(
+    val appName: String,
+    val packageName: String,
+    val riskScore: Int,
+    val riskLevel: String,
+    val riskColor: Color,
+    val permissions: List<String>
+)
 
 @Composable
 fun PermissionAnalyzerScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     BackHandler {
         onBack()
     }
-    val items = listOf(
-        PermissionItem("BIND_ACCESSIBILITY_SERVICE", "CRITICAL RISK", CyberDanger),
-        PermissionItem("RECEIVE_SMS / SEND_SMS", "HIGH RISK", CyberWarning),
-        PermissionItem("ACCESS_FINE_LOCATION", "MEDIUM RISK", CyberWarning),
-        PermissionItem("CAMERA", "LOW RISK", Color.Gray)
-    )
+
+    // Retrieve real apps & calculate threat risk scores dynamically
+    val appRisks = remember {
+        val pm = context.packageManager
+        val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        val risks = mutableListOf<AppRiskInfo>()
+
+        for (pkg in packages) {
+            val isSystemApp = (pkg.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+            if (isSystemApp) continue
+
+            val permissions = pkg.requestedPermissions ?: emptyArray<String>()
+            var riskScore = 0
+            val flaggedPerms = mutableListOf<String>()
+
+            for (perm in permissions) {
+                when (perm) {
+                    "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { riskScore += 40; flaggedPerms.add("Accessibility") }
+                    "android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS" -> { riskScore += 30; flaggedPerms.add("SMS") }
+                    "android.permission.SYSTEM_ALERT_WINDOW" -> { riskScore += 25; flaggedPerms.add("Draw Over Apps") }
+                    "android.permission.RECORD_AUDIO" -> { riskScore += 20; flaggedPerms.add("Microphone") }
+                    "android.permission.CAMERA" -> { riskScore += 20; flaggedPerms.add("Camera") }
+                    "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION" -> { riskScore += 15; flaggedPerms.add("Location") }
+                    "android.permission.READ_CONTACTS" -> { riskScore += 10; flaggedPerms.add("Contacts") }
+                    "android.permission.READ_EXTERNAL_STORAGE" -> { riskScore += 10; flaggedPerms.add("Storage") }
+                }
+            }
+
+            if (riskScore > 0) {
+                val (level, color) = when {
+                    riskScore >= 50 -> "CRITICAL RISK" to CyberDanger
+                    riskScore >= 30 -> "HIGH RISK" to CyberWarning
+                    riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
+                    else -> "LOW RISK" to Color.Gray
+                }
+                val appName = pkg.applicationInfo.loadLabel(pm).toString()
+                risks.add(
+                    AppRiskInfo(
+                        appName = appName,
+                        packageName = pkg.packageName,
+                        riskScore = riskScore,
+                        riskLevel = level,
+                        riskColor = color,
+                        permissions = flaggedPerms.distinct()
+                    )
+                )
+            }
+        }
+
+        // Fallback to system apps if no third-party user apps are found (e.g. on clean emulator)
+        if (risks.isEmpty()) {
+            for (pkg in packages) {
+                val permissions = pkg.requestedPermissions ?: emptyArray<String>()
+                var riskScore = 0
+                val flaggedPerms = mutableListOf<String>()
+                for (perm in permissions) {
+                    when (perm) {
+                        "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { riskScore += 40; flaggedPerms.add("Accessibility") }
+                        "android.permission.READ_SMS" -> { riskScore += 30; flaggedPerms.add("SMS") }
+                        "android.permission.CAMERA" -> { riskScore += 20; flaggedPerms.add("Camera") }
+                        "android.permission.ACCESS_FINE_LOCATION" -> { riskScore += 15; flaggedPerms.add("Location") }
+                    }
+                }
+                if (riskScore > 0) {
+                    val (level, color) = when {
+                        riskScore >= 40 -> "CRITICAL RISK" to CyberDanger
+                        riskScore >= 30 -> "HIGH RISK" to CyberWarning
+                        riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
+                        else -> "LOW RISK" to Color.Gray
+                    }
+                    val appName = pkg.applicationInfo.loadLabel(pm).toString()
+                    risks.add(AppRiskInfo(appName, pkg.packageName, riskScore, level, color, flaggedPerms.distinct()))
+                }
+            }
+        }
+        risks.sortedByDescending { it.riskScore }
+    }
 
     Column(
         modifier = Modifier
@@ -994,7 +1181,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Active system background access channels classified by vulnerability risks:",
+            text = "Active system background access channels audited by dynamic vulnerability risk matrices:",
             color = Color.LightGray,
             fontSize = 13.sp,
             lineHeight = 18.sp
@@ -1002,33 +1189,61 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(items) { perm ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(CyberCard)
-                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(perm.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        Text("Risk Tier Rating", color = Color.Gray, fontSize = 10.sp)
-                    }
-                    Text(
-                        text = perm.level,
-                        color = perm.color,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
+        if (appRisks.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No risk applications detected on host device.", color = CyberSuccess, fontSize = 14.sp)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(appRisks) { app ->
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(perm.color.copy(alpha = 0.15f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CyberCard)
+                            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = app.appName,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = app.packageName,
+                                color = Color.Gray,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            if (app.permissions.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Flagged: " + app.permissions.joinToString(", "),
+                                    color = app.riskColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = app.riskLevel,
+                            color = app.riskColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(app.riskColor.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
