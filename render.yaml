@@ -1,0 +1,37 @@
+services:
+  # FastAPI Backend Web Service
+  - type: web
+    name: sentinel-backend
+    env: python
+    region: ohio
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    rootDir: backend
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sentinel-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sentinel-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FIREBASE_PROJECT_ID
+        value: "senthel-f8ddc"
+
+  # Redis Instance
+  - type: redis
+    name: sentinel-redis
+    region: ohio
+    plan: free
+
+databases:
+  # PostgreSQL Database
+  - name: sentinel-db
+    databaseName: sentinel
+    user: sentinel_admin
+    region: ohio
+    plan: free
