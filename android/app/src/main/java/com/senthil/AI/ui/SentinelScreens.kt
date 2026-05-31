@@ -39,6 +39,7 @@ val CyberDanger = Color(0xFFFF4D4D)
 sealed class Screen {
     object Splash : Screen()
     object Login : Screen()
+    object Register : Screen()
     object Dashboard : Screen()
     object URLScanner : Screen()
     object SMSAnalyzer : Screen()
@@ -64,6 +65,19 @@ fun SentinelApp() {
                     userEmail = email
                     token = authToken
                     currentScreen = Screen.Dashboard
+                },
+                onNavigateToRegister = {
+                    currentScreen = Screen.Register
+                }
+            )
+            is Screen.Register -> RegisterScreen(
+                onRegisterSuccess = { email, authToken ->
+                    userEmail = email
+                    token = authToken
+                    currentScreen = Screen.Dashboard
+                },
+                onNavigateToLogin = {
+                    currentScreen = Screen.Login
                 }
             )
             is Screen.Dashboard -> DashboardScreen(
@@ -136,7 +150,10 @@ fun SplashScreen(onFinish: () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
+fun LoginScreen(
+    onLoginSuccess: (String, String) -> Unit,
+    onNavigateToRegister: () -> Unit
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -255,6 +272,181 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
                 Text("AUTHENTICATE AGENT", color = CyberBackground, fontWeight = FontWeight.Bold)
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Need access? Register Agent",
+            color = CyberPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clickable { onNavigateToRegister() }
+                .padding(8.dp)
+        )
+    }
+}
+
+@Composable
+fun RegisterScreen(
+    onRegisterSuccess: (String, String) -> Unit,
+    onNavigateToLogin: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.Shield,
+            contentDescription = "Shield",
+            tint = CyberPrimary,
+            modifier = Modifier.size(64.dp)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "CREATING ACCESS PORTAL",
+            color = Color.White,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "Register with Sentinel Shield",
+            color = Color.Gray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        if (errorMsg.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CyberDanger.copy(alpha = 0.15f))
+                    .padding(12.dp)
+            ) {
+                Text(errorMsg, color = CyberDanger, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Agent Email") },
+            leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Email", tint = CyberPrimary) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CyberPrimary,
+                unfocusedBorderColor = Color.DarkGray,
+                focusedLabelColor = CyberPrimary,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Access Key") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Lock", tint = CyberPrimary) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CyberPrimary,
+                unfocusedBorderColor = Color.DarkGray,
+                focusedLabelColor = CyberPrimary,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it },
+            label = { Text("Confirm Access Key") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Lock", tint = CyberPrimary) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CyberPrimary,
+                unfocusedBorderColor = Color.DarkGray,
+                focusedLabelColor = CyberPrimary,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = {
+                if (email.isBlank() || password.isBlank()) {
+                    errorMsg = "Email and password are required."
+                    return@Button
+                }
+                if (password != confirmPassword) {
+                    errorMsg = "Passwords do not match."
+                    return@Button
+                }
+                isLoading = true
+                errorMsg = ""
+                coroutineScope.launch {
+                    try {
+                        // 1. Create User in Firebase Auth
+                        val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
+                        val result = auth.createUserWithEmailAndPassword(email, password).await()
+                        val idToken = result.user?.getIdToken(false)?.await()?.token
+                            ?: throw Exception("Failed to get Firebase token")
+
+                        // 2. Sync with Render backend
+                        val response = com.senthil.AI.data.SentinelApiClient.instance
+                            .verifyFirebaseToken(com.senthil.AI.data.FirebaseTokenRequest(idToken))
+
+                        onRegisterSuccess(response.email, "Bearer ${response.access_token}")
+                    } catch (e: Exception) {
+                        errorMsg = e.message?.take(80) ?: "Registration failed."
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(color = CyberBackground, modifier = Modifier.size(24.dp))
+            } else {
+                Text(
+                    text = "REGISTER AGENT",
+                    color = CyberBackground,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Already registered? Login here",
+            color = CyberPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clickable { onNavigateToLogin() }
+                .padding(8.dp)
+        )
     }
 }
 
