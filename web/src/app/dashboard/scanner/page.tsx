@@ -30,7 +30,14 @@ export default function URLScannerPage() {
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    const raw = url.trim();
+    if (!raw) return;
+
+    // Automatically prepend https:// if protocol was omitted (e.g. super1000.info/docs)
+    const normalizedUrl = raw.startsWith('http://') || raw.startsWith('https://')
+      ? raw
+      : `https://${raw}`;
+
     setLoading(true);
     setResult(null);
 
@@ -41,11 +48,11 @@ export default function URLScannerPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ url: url.trim() })
+        body: JSON.stringify({ url: normalizedUrl })
       });
       const data = await res.json();
       const scanResult: ScanResult = {
-        url: url.trim(),
+        url: normalizedUrl,
         status: data.status || 'Unknown',
         score: data.score || 0,
         details: data.details || [],
@@ -56,10 +63,11 @@ export default function URLScannerPage() {
       setHistory(prev => [scanResult, ...prev.slice(0, 9)]);
     } catch {
       // Intelligent offline fallback
-      const lower = url.toLowerCase();
+      const lower = normalizedUrl.toLowerCase();
       const isPhishing = lower.includes('verify') || lower.includes('secure') ||
         lower.includes('paypal') || lower.includes('amaz0n') || lower.includes('bit.ly') ||
-        lower.includes('giftvoucher') || lower.includes('.tk') || lower.includes('.xyz');
+        lower.includes('giftvoucher') || lower.includes('.tk') || lower.includes('.xyz') ||
+        lower.includes('.info') || lower.includes('.top');
       const isSuspicious = lower.includes('login') || lower.includes('update') || lower.includes('free');
 
       const score = isPhishing ? Math.floor(Math.random() * 15) + 82 : isSuspicious ? Math.floor(Math.random() * 25) + 45 : Math.floor(Math.random() * 15) + 5;
@@ -71,7 +79,7 @@ export default function URLScannerPage() {
         details.push('Domain not registered in trusted certificate authorities');
         details.push('URL structure matches known phishing templates');
         if (lower.includes('bit.ly')) details.push('Obfuscated shortened URL redirect detected');
-        if (lower.includes('.tk') || lower.includes('.xyz')) details.push('Free/disposable TLD associated with phishing campaigns');
+        if (lower.includes('.tk') || lower.includes('.xyz') || lower.includes('.info')) details.push('Untrusted/disposable TLD associated with high scam frequency');
       } else if (isSuspicious) {
         details.push('Login redirect chain detected — validate destination before proceeding');
         details.push('Domain age is less than 90 days from registration');
@@ -82,7 +90,7 @@ export default function URLScannerPage() {
       }
 
       const scanResult: ScanResult = {
-        url: url.trim(),
+        url: normalizedUrl,
         status,
         score,
         details,
@@ -120,17 +128,17 @@ export default function URLScannerPage() {
             <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Target URL</label>
             <div className="flex gap-3 mt-2">
               <div className="relative flex-1">
-                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-500" />
+                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-primary" />
                 <input
-                  type="url"
+                  type="text"
                   value={url}
                   onChange={e => setUrl(e.target.value)}
-                  placeholder="https://example.com or paste any suspicious link..."
-                  className="w-full bg-background/80 border border-white/10 rounded-lg pl-11 pr-10 py-3.5 text-sm text-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono transition-colors"
+                  placeholder="super1000.info/docs or paste any suspicious link..."
+                  className="w-full bg-[#0b1329] border border-cyan-500/30 rounded-lg pl-11 pr-10 py-3.5 text-sm text-white font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-gray-500"
                   required
                 />
                 {url && (
-                  <button type="button" onClick={() => { setUrl(''); setResult(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-white">
+                  <button type="button" onClick={() => { setUrl(''); setResult(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
                     <X className="w-4 h-4" />
                   </button>
                 )}
