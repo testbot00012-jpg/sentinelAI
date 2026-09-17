@@ -9,8 +9,8 @@ import retrofit2.http.POST
 import retrofit2.http.Header
 import java.util.concurrent.TimeUnit
 
-// ===== Live Backend URL (Render deployed) =====
-const val BASE_URL = "https://sentinelai-6kf0.onrender.com/"
+// ===== Live Backend URL (Railway deployed) =====
+const val BASE_URL = "https://sentinel-backend-production-16ff.up.railway.app/"
 
 // Singleton Retrofit client
 object SentinelApiClient {
