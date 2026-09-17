@@ -58,14 +58,19 @@ async def update_telemetry(req: DeviceTelemetryRequest, current_user: dict = Dep
 async def get_user_metrics(current_user: dict = Depends(get_current_user), db = Depends(get_db)):
     user_id = current_user.get("_id")
     user_email = current_user.get("email")
+    firebase_uid = current_user.get("firebase_uid")
+
     match_conditions = []
-    if user_id:
-        match_conditions.append({"user_id": user_id})
-        match_conditions.append({"user_id": str(user_id)})
     if user_email:
         match_conditions.append({"user_email": user_email})
         match_conditions.append({"user_id": user_email})
         match_conditions.append({"user_id": f"user_{user_email}"})
+    if user_id:
+        match_conditions.append({"user_id": user_id})
+        match_conditions.append({"user_id": str(user_id)})
+    if firebase_uid:
+        match_conditions.append({"user_id": firebase_uid})
+        match_conditions.append({"firebase_uid": firebase_uid})
 
     user_filter = {"$or": match_conditions} if match_conditions else {}
 
@@ -73,6 +78,7 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
     try:
         url_scans_count = await db["url_scans"].count_documents(user_filter)
         fraud_scans_count = await db["fraud_scans"].count_documents(user_filter)
+        apk_scans_count = await db["apk_scans"].count_documents(user_filter)
         device = await db["device_stats"].find_one(user_filter, sort=[("updated_at", -1)])
         threats_blocked = await db["threat_logs"].count_documents(user_filter)
         phishing_count = await db["url_scans"].count_documents({"$and": [user_filter, {"status": {"$in": ["Phishing", "Suspicious"]}}]})
@@ -82,6 +88,7 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
         print(f"[Warning] Metrics DB query error: {db_err}")
         url_scans_count = 0
         fraud_scans_count = 0
+        apk_scans_count = 0
         device = None
         threats_blocked = 0
         phishing_count = 0
@@ -119,7 +126,7 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
         "summary": {
             "security_score": security_score,
             "threats_blocked": threats_blocked,
-            "total_scans": url_scans_count + fraud_scans_count,
+            "total_scans": url_scans_count + fraud_scans_count + apk_scans_count,
             "device_health": device_health
         },
         "trends": security_trends,

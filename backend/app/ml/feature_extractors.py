@@ -17,8 +17,10 @@ SHORTENER_DOMAINS = {
 SUSPICIOUS_TLDS = {
     "xyz", "top", "tk", "ml", "ga", "cf", "gq", "buzz", "club", "fit", "work", 
     "rest", "live", "guru", "online", "stream", "cam", "icu", "click", "vip", 
-    "country", "bid", "loan", "date", "racing", "win", "stream", "download", 
-    "accountant", "science", "party", "review", "trade", "webcam", "faith"
+    "country", "bid", "loan", "date", "racing", "win", "download", 
+    "accountant", "science", "party", "review", "trade", "webcam", "faith",
+    "info", "site", "space", "shop", "cfd", "sbs", "bond", "lat", "monster",
+    "link", "skin", "autos", "hair", "makeup", "beauty", "quest", "agency", "cc", "pro"
 }
 
 # Major targeted brands frequently spoofed in phishing
@@ -35,7 +37,9 @@ SUSPICIOUS_URL_KEYWORDS = [
     "signin", "auth", "account", "confirm", "service", "password", "wallet", 
     "recover", "ebayisapi", "webscr", "paypai", "appie", "micros0ft", "security",
     "portal", "verify", "identity", "validate", "token", "session", "passcode",
-    "unlock", "restore", "suspended", "alert", "notice", "claim", "prize"
+    "unlock", "restore", "suspended", "alert", "notice", "claim", "prize",
+    "docs", "doc", "document", "documents", "form", "forms", "invoice", "view",
+    "super", "bonus", "winner", "reward", "gift", "airdrop", "office365", "docusign"
 ]
 
 # High-risk SMS psycholinguistic dictionaries

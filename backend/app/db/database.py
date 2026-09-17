@@ -4,12 +4,15 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "mongodb+srv://<db_username>:ZWjW7Eidrlz3TwEn@cluster0.nwf6du7.mongodb.net/?appName=Cluster0")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "mongodb+srv://testbot00012_db_user:ZWjW7Eidrlz3TwEn@cluster0.nwf6du7.mongodb.net/sentinel_db?appName=Cluster0&retryWrites=true&w=majority"
+)
 
 client = AsyncIOMotorClient(
     DATABASE_URL,
-    serverSelectionTimeoutMS=2000,
-    connectTimeoutMS=2000
+    serverSelectionTimeoutMS=8000,
+    connectTimeoutMS=8000
 )
 database = client.sentinel_db
 

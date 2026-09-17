@@ -22,7 +22,7 @@ const SMS_EXAMPLES = [
 ];
 
 export default function SMSAnalyzerPage() {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const [text, setText] = useState('');
   const [result, setResult] = useState<SMSResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -89,7 +89,8 @@ export default function SMSAnalyzerPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'X-User-Email': user?.email || ''
         },
         body: JSON.stringify({ content: text.trim(), scan_type: 'SMS' })
       });

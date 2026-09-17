@@ -277,23 +277,47 @@ class SentinelMLEngine:
             ml_score = max(ml_score, 95.0)
             details.insert(0, "Punycode Homograph Attack: Host contains encoded 'xn--' characters spoofing brand lookalikes")
 
-        # 5. High-Abuse TLD with Phishing Lures
+        # 5. High-Abuse TLD with Phishing Lures & Synthetic Domain Generation
         tld = domain_lower.split(".")[-1] if "." in domain_lower else ""
-        if tld in SUSPICIOUS_TLDS:
-            has_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "account", "update", "bank", "wallet", "claim", "prize", "auth", "kyc", "alert"])
-            if has_lure:
-                ml_score = max(ml_score, 94.0)
-                details.insert(0, f"Suspicious TLD Abuse: High-abuse '.{tld}' domain paired with authentication/credential lure keywords")
+        synthetic_lure_match = bool(re.search(r"(?:super|win|bonus|claim|prize|offer|lucky|gift|secure|verify|account|doc|docs|update|auth|login)\d{2,}", domain_lower))
+        lure_keywords = [
+            "login", "signin", "verify", "secure", "account", "update", "bank",
+            "wallet", "claim", "prize", "auth", "kyc", "alert", "docs", "doc",
+            "document", "form", "forms", "invoice", "view", "pdf", "portal",
+            "confirm", "support", "service", "suspended", "unlock", "bonus", "reward", "winner"
+        ]
+        has_lure = any(kw in url_lower for kw in lure_keywords)
 
-        # 6. Ephemeral Free Tunneling / Forwarding Abuse
+        if tld in SUSPICIOUS_TLDS:
+            if synthetic_lure_match and has_lure:
+                ml_score = max(ml_score, 96.0)
+                details.insert(0, f"Critical Phishing Kit Signature: Synthetic lure domain '{domain}' on high-abuse '.{tld}' TLD with deceptive path '{parsed.path or '/'}'")
+            elif synthetic_lure_match:
+                ml_score = max(ml_score, 92.0)
+                details.insert(0, f"Automated Phishing Kit Pattern: Synthetic bait domain '{domain}' on high-abuse '.{tld}' TLD")
+            elif has_lure:
+                ml_score = max(ml_score, 94.0)
+                details.insert(0, f"Suspicious TLD Abuse: High-abuse '.{tld}' domain paired with authentication/document lure keywords")
+            else:
+                ml_score = max(ml_score, 72.0)
+                details.append(f"Untrusted TLD: '.{tld}' has elevated association with disposable phishing campaigns")
+
+        # 6. Deceptive Credential/Document Harvesting Endpoint
+        suspicious_paths = ["/docs", "/doc", "/form", "/forms", "/login", "/signin", "/verify", "/account", "/update", "/invoice", "/view", "/claim", "/wallet"]
+        if any(parsed.path.lower().startswith(p) or parsed.path.lower().endswith(p) for p in suspicious_paths):
+            if not is_whitelisted and (tld in SUSPICIOUS_TLDS or "-" in domain_lower or bool(re.search(r"\d{2,}", domain_lower))):
+                ml_score = max(ml_score, 91.5)
+                details.insert(0, f"Deceptive Harvesting Endpoint: Path '{parsed.path}' matches known credential/document phishing kits")
+
+        # 7. Ephemeral Free Tunneling / Forwarding Abuse
         TUNNEL_SERVICES = ["ngrok-free.app", "ngrok.io", "loca.lt", "trycloudflare.com", "glitch.me", "pagekite.me"]
         if any(ts in domain_lower for ts in TUNNEL_SERVICES):
-            has_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "bank", "account", "update"])
-            if has_lure:
+            has_tunnel_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "bank", "account", "update"])
+            if has_tunnel_lure:
                 ml_score = max(ml_score, 92.5)
                 details.insert(0, f"Abused Cloud Tunnel: Ephemeral tunnel provider '{domain}' hosting credential phishing interface")
 
-        # 7. Subdomain Stacking with Credential Keywords
+        # 8. Subdomain Stacking with Credential Keywords
         if domain_lower.count(".") >= 3 and any(kw in url_lower for kw in ["login", "signin", "verify", "bank"]):
             ml_score = max(ml_score, 88.0)
             details.append("Excessive Subdomains: Host contains 4+ domain levels attempting visual authority masking")
@@ -347,6 +371,16 @@ class SentinelMLEngine:
                 scam_prob = probs[1] * 100.0
             except Exception as e:
                 logger.error(f"[ML Engine] SMS NLP inference error: {e}")
+
+        # Check if text contains an embedded URL and correlate with URL threat engine
+        url_matches = re.findall(r"(?:https?://|www\.)[^\s]+|[a-zA-Z0-9-]+\.(?:info|xyz|top|site|club|tk|ml|cf|ga|gq|buzz|work|click|online|shop|live|com|net|org)/[^\s]*", text)
+        if url_matches:
+            has_link = True
+            for raw_u in url_matches:
+                u_analysis = self.analyze_url(raw_u)
+                if u_analysis["status"] in ["Phishing", "Suspicious"]:
+                    scam_prob = max(scam_prob or 0.0, float(u_analysis["score"]))
+                    reasons.insert(0, f"Contains {u_analysis['status'].lower()} URL ({raw_u}) with {u_analysis['score']}% threat score")
 
         # Fallback heuristic calculation
         if scam_prob is None:

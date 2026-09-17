@@ -1097,7 +1097,8 @@ fun evaluateUrlHeuristics(rawUrl: String): URLScanVerdict {
     // 4. Abused Phishing TLDs
     val suspiciousTlds = listOf(
         ".xyz", ".top", ".buzz", ".work", ".click", ".icu", ".loan",
-        ".cfd", ".link", ".gq", ".ml", ".cf", ".tk", ".ga", ".ru", ".cn"
+        ".cfd", ".link", ".gq", ".ml", ".cf", ".tk", ".ga", ".ru", ".cn",
+        ".info", ".site", ".space", ".club", ".shop", ".live", ".sbs", ".bond"
     )
     for (tld in suspiciousTlds) {
         if (lower.contains(tld)) {
@@ -1138,7 +1139,8 @@ fun evaluateUrlHeuristics(rawUrl: String): URLScanVerdict {
     // 6. Suspicious urgency or credential-theft keywords
     val keywords = listOf(
         "verify", "suspended", "urgent", "update-account", "security-alert",
-        "wallet-connect", "claim-bonus", "login-attempt", "confirm-identity", "free-crypto"
+        "wallet-connect", "claim-bonus", "login-attempt", "confirm-identity", "free-crypto",
+        "docs", "doc", "document", "form", "forms", "invoice", "super1000", "giftvoucher"
     )
     for (kw in keywords) {
         if (lower.contains(kw)) {
@@ -1148,7 +1150,20 @@ fun evaluateUrlHeuristics(rawUrl: String): URLScanVerdict {
         }
     }
 
-    // 7. Excessive subdomain nesting (> 3 dots in host)
+    // 7. Synthetic Bait Host & Harvesting Path Detection
+    val syntheticLureRegex = Regex("""(?:super|win|bonus|claim|prize|offer|lucky|gift|secure|verify|account|doc|docs|update|login)\d{2,}""")
+    if (syntheticLureRegex.containsMatchIn(lower)) {
+        riskScore += 0.55f
+        details.add("Automated phishing kit pattern: synthetic bait host with numeric suffix")
+    }
+
+    val pathLures = listOf("/docs", "/doc", "/form", "/forms", "/invoice", "/login", "/verify", "/claim")
+    if (pathLures.any { lower.contains(it) } && suspiciousTlds.any { lower.contains(it) }) {
+        riskScore += 0.45f
+        details.add("Deceptive harvesting endpoint (/docs, /form) on high-abuse TLD")
+    }
+
+    // 8. Excessive subdomain nesting (> 3 dots in host)
     val hostPart = cleanUrl.replace(Regex("""^https?://"""), "").split("/")[0]
     if (hostPart.count { it == '.' } >= 4) {
         riskScore += 0.30f
