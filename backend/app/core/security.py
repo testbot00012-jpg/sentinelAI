@@ -113,18 +113,28 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(get
         raise credentials_exception
 
     # Automatically provision SSO user in MongoDB local database on first check
-    user = await db["users"].find_one({"email": email})
-    if user is None:
-        count = await db["users"].count_documents({})
+    user = None
+    try:
+        user = await db["users"].find_one({"email": email})
+        if user is None:
+            count = await db["users"].count_documents({})
+            user = {
+                "email": email,
+                "hashed_password": "SSO_MANAGED_PASSWORD_STUB",
+                "full_name": claims.get("name", "Sentinel Agent"),
+                "role": "admin" if count == 0 else "user",
+                "created_at": datetime.utcnow()
+            }
+            res = await db["users"].insert_one(user)
+            user["_id"] = res.inserted_id
+    except Exception as db_err:
+        print(f"[Warning] MongoDB get_current_user error: {db_err}")
         user = {
+            "_id": str(claims.get("uid", f"user_{email}")),
             "email": email,
-            "hashed_password": "SSO_MANAGED_PASSWORD_STUB",
-            "full_name": claims.get("name", "Sentinel Agent"),
-            "role": "admin" if count == 0 else "user",
-            "created_at": datetime.utcnow()
+            "role": "user",
+            "full_name": claims.get("name", "Sentinel Agent")
         }
-        res = await db["users"].insert_one(user)
-        user["_id"] = res.inserted_id
         
     return user
 

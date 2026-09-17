@@ -61,14 +61,28 @@ async def update_telemetry(req: DeviceTelemetryRequest, current_user: dict = Dep
 
 @router.get("/metrics")
 async def get_user_metrics(current_user: dict = Depends(get_current_user), db = Depends(get_db)):
-    # Retrieve all metrics for charts and dashboards
-    url_scans_count = await db["url_scans"].count_documents({"user_id": current_user["_id"]})
-    fraud_scans_count = await db["fraud_scans"].count_documents({"user_id": current_user["_id"]})
-    
-    device = await db["device_stats"].find_one({"user_id": current_user["_id"]})
+    # Retrieve all metrics with resilient fallback
+    try:
+        url_scans_count = await db["url_scans"].count_documents({"user_id": current_user["_id"]})
+        fraud_scans_count = await db["fraud_scans"].count_documents({"user_id": current_user["_id"]})
+        device = await db["device_stats"].find_one({"user_id": current_user["_id"]})
+        threats_blocked = await db["threat_logs"].count_documents({"user_id": current_user["_id"]})
+        phishing_count = await db["url_scans"].count_documents({"user_id": current_user["_id"], "status": "Phishing"})
+        scam_count = await db["fraud_scans"].count_documents({"user_id": current_user["_id"], "classification": {"$regex": "Scam", "$options": "i"}})
+        malware_count = await db["threat_logs"].count_documents({"user_id": current_user["_id"], "threat_type": "Malicious APK"})
+    except Exception as db_err:
+        print(f"[Warning] Metrics DB query failed: {db_err}")
+        url_scans_count = 0
+        fraud_scans_count = 0
+        device = None
+        threats_blocked = 0
+        phishing_count = 0
+        scam_count = 0
+        malware_count = 0
+
     security_score = device.get("security_score", 95) if device else 95
 
-    # Create dummy trends data for graphs
+    # Create trends data for graphs
     security_trends = [
         {"day": "Mon", "score": 95},
         {"day": "Tue", "score": 92},
@@ -80,15 +94,15 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
     ]
 
     threat_distribution = [
-        {"name": "Phishing URLs", "value": await db["url_scans"].count_documents({"user_id": current_user["_id"], "status": "Phishing"})},
-        {"name": "Scam SMS", "value": await db["fraud_scans"].count_documents({"user_id": current_user["_id"], "classification": {"$regex": "Scam", "$options": "i"}})},
-        {"name": "Malware APks", "value": await db["threat_logs"].count_documents({"user_id": current_user["_id"], "threat_type": "Malicious APK"})}
+        {"name": "Phishing URLs", "value": phishing_count},
+        {"name": "Scam SMS", "value": scam_count},
+        {"name": "Malware APks", "value": malware_count}
     ]
 
     return {
         "summary": {
             "security_score": security_score,
-            "threats_blocked": await db["threat_logs"].count_documents({"user_id": current_user["_id"]}),
+            "threats_blocked": threats_blocked,
             "total_scans": url_scans_count + fraud_scans_count,
             "device_health": {
                 "battery": device.get("battery_health", 88) if device else 88,

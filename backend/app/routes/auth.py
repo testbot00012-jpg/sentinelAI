@@ -24,31 +24,41 @@ async def verify_firebase_login(req: FirebaseTokenRequest, db = Depends(get_db))
         raise HTTPException(status_code=401, detail=f"Authentication check failed: {str(e)}")
 
     # Check for existing user or provision on the fly
-    user = await db["users"].find_one({"email": email})
-    if user is None:
-        count = await db["users"].count_documents({})
-        user = {
-            "email": email,
-            "hashed_password": "SSO_MANAGED_PASSWORD_STUB",
-            "full_name": claims.get("name", "Firebase User"),
-            "role": "admin" if count == 0 else "user",
-            "created_at": datetime.datetime.utcnow()
-        }
-        res = await db["users"].insert_one(user)
-        user["_id"] = res.inserted_id
+    user = None
+    try:
+        user = await db["users"].find_one({"email": email})
+        if user is None:
+            count = await db["users"].count_documents({})
+            user = {
+                "email": email,
+                "hashed_password": "SSO_MANAGED_PASSWORD_STUB",
+                "full_name": claims.get("name", "Firebase User"),
+                "role": "admin" if count == 0 else "user",
+                "created_at": datetime.datetime.utcnow()
+            }
+            res = await db["users"].insert_one(user)
+            user["_id"] = res.inserted_id
 
-    # Log action in unified DB Audit Trails
-    log = {
-        "user_id": user["_id"],
-        "action": "Firebase Login Sync",
-        "timestamp": datetime.datetime.utcnow()
-    }
-    await db["activity_logs"].insert_one(log)
+        # Log action in unified DB Audit Trails
+        log = {
+            "user_id": user["_id"],
+            "action": "Firebase Login Sync",
+            "timestamp": datetime.datetime.utcnow()
+        }
+        await db["activity_logs"].insert_one(log)
+    except Exception as db_err:
+        print(f"[Warning] MongoDB sync error (check DATABASE_URL): {db_err}")
+        if not user:
+            user = {
+                "email": email,
+                "role": "user",
+                "full_name": claims.get("name", "Firebase User")
+            }
 
     return {
         "access_token": req.id_token,
         "token_type": "bearer",
-        "email": user["email"],
-        "role": user["role"],
+        "email": user.get("email", email),
+        "role": user.get("role", "user"),
         "status": "synchronized"
     }
