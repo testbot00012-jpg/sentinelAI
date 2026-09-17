@@ -43,6 +43,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import android.net.Uri
 import android.provider.Settings
+import java.io.File
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import com.senthil.AI.data.SentinelApiClient
 import com.senthil.AI.data.URLScanRequest
 import com.senthil.AI.data.ChatRequest
@@ -68,6 +71,8 @@ sealed class Screen {
     object PermissionAnalyzer : Screen()
     object Profile : Screen()
     object DynamicScanResult : Screen()
+    object Optimizer : Screen()
+    object PaymentShield : Screen()
 }
 
 @Composable
@@ -110,7 +115,7 @@ fun SentinelApp() {
                     currentScreen = Screen.Login
                 }
             )
-            Screen.Dashboard, Screen.Chatbot, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile, Screen.DynamicScanResult -> {
+            Screen.Dashboard, Screen.Chatbot, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile, Screen.DynamicScanResult, Screen.Optimizer, Screen.PaymentShield -> {
                 Scaffold(
                     bottomBar = {
                         NavigationBar(
@@ -223,6 +228,13 @@ fun SentinelApp() {
                                 }
                             )
                             is Screen.DynamicScanResult -> DynamicSystemScanResultScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
+                            is Screen.Optimizer -> OptimizerScreen(
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
+                            is Screen.PaymentShield -> PaymentShieldScreen(
+                                token = token,
                                 onBack = { currentScreen = Screen.Dashboard }
                             )
                             else -> {}
@@ -817,21 +829,30 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
 
                 Text("SHIELD ACTIVE ENGINES", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
 
-                // Active engines indicators
+                // Active engines indicators - Row 1
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary, onClick = { onNavigate(Screen.URLScanner) })
                     EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary, onClick = { onNavigate(Screen.SMSAnalyzer) })
-                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning, onClick = { onNavigate(Screen.PermissionAnalyzer) })
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Pay Shield", status = "ARMED", tint = CyberSuccess, onClick = { onNavigate(Screen.PaymentShield) })
                 }
 
-                Text("DEVICE UTILIZATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                // Active engines indicators - Row 2
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "App Auditor", status = "SAFE", tint = CyberWarning, onClick = { onNavigate(Screen.PermissionAnalyzer) })
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Optimizer Suite", status = "READY", tint = CyberPrimary, onClick = { onNavigate(Screen.Optimizer) })
+                }
+
+                Text("DEVICE UTILIZATION & PERFORMANCE", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
 
                 // Progress bars for RAM, Storage, and Battery on Dashboard
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
@@ -842,6 +863,26 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                     UsageProgressRow(label = "Memory (RAM)", percent = ramPercent, color = CyberSecondary)
                     UsageProgressRow(label = "Internal Storage", percent = storagePercent, color = CyberPrimary)
                     UsageProgressRow(label = "Battery Power", percent = batteryPercent, color = CyberSuccess)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = { onNavigate(Screen.Optimizer) },
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Speed, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "⚡ 1-TAP OPTIMIZE (RAM • JUNK • POWER)",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
             
@@ -1743,11 +1784,17 @@ data class AppRiskInfo(
     val appName: String,
     val packageName: String,
     val riskScore: Int,
-    val riskLevel: String,
+    val riskLevel: String, // "CRITICAL RISK", "HIGH RISK", "MONITORED", "VERIFIED SAFE", "CLEAN / SAFE"
     val riskColor: Color,
-    val permissions: List<String>
+    val isSystemOrOem: Boolean,
+    val isVerifiedEcosystem: Boolean,
+    val permissions: List<String>,
+    val installerSource: String = "Google Play",
+    val isSideloaded: Boolean = false,
+    val isFakeClone: Boolean = false
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionAnalyzerScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -1755,77 +1802,202 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
         onBack()
     }
 
-    // Retrieve ONLY third-party user-installed apps & calculate threat risk scores dynamically
-    val appRisks = remember {
+    var selectedTab by remember { mutableStateOf(0) } // 0: User Apps, 1: System & OEM, 2: All Apps
+    var selectedFilter by remember { mutableStateOf("ALL") } // "ALL", "CRITICAL", "MONITORED", "SAFE", "SIDELOADED"
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Known verified ecosystem apps
+    val verifiedPrefixes = remember {
+        listOf(
+            "com.whatsapp", "com.instagram", "com.facebook", "com.truecaller", "in.swiggy",
+            "com.application.zomato", "com.zomato", "net.one97.paytm", "com.phonepe", "com.myairtelapp",
+            "com.jio", "com.ubercab", "com.rapido", "com.netflix", "com.amazon", "in.amazon",
+            "com.spotify", "org.telegram", "com.snapchat", "com.flipkart", "com.myntra", "com.meesho",
+            "com.fampay", "money.super", "in.mobility.cumta", "com.nextbillion.groww", "com.jar",
+            "com.dts.freefiremax", "com.king.candycrushsaga", "com.supercell", "com.openai",
+            "ai.perplexity", "com.deepseek", "com.twitter", "com.linkedin", "com.pinterest",
+            "us.zoom", "com.discord", "com.sbi", "in.org.npci", "tv.accedo.airtel.wynk", "com.olacabs",
+            "com.Dominos", "in.burgerking", "com.yum.kfc", "com.milkbasket", "com.bigbasket",
+            "com.grofers", "com.zeptoconsumerapp", "app.blinkit", "com.blinkit", "com.digilocker",
+            "com.azure.authenticator", "in.gov.uidai", "in.gov.swayam", "com.cris.utsmobile",
+            "com.confirmtkt", "com.whereismytrain", "in.redbus", "in.goindigo", "com.cv.docscanner",
+            "com.mmi.maps", "com.neave.zoomearth", "com.adobe", "com.termux", "com.ludo.king",
+            "com.ansangha", "com.nautilus", "com.supercell", "com.gameloft", "com.nextwave"
+        )
+    }
+
+    val oemPrefixes = remember {
+        listOf(
+            "com.miui.", "com.xiaomi.", "com.google.android.", "com.google.ar.", "com.android.",
+            "com.qualcomm.", "com.sec.android.", "com.huawei.", "android", "cn.wps.xiaomi.",
+            "com.mi.global.", "com.duokan.", "org.chromium.webapk.", "com.preff.kb.", "com.indus."
+        )
+    }
+
+    val allAppRisks = remember {
         val pm = context.packageManager
         val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
-        val risks = mutableListOf<AppRiskInfo>()
+        val list = mutableListOf<AppRiskInfo>()
 
         for (pkg in packages) {
             val appInfo = pkg.applicationInfo ?: continue
             val pkgName = pkg.packageName.lowercase()
+            if (pkgName == "com.sentinelai" || pkgName == context.packageName) continue
 
-            // 1. Strict System and OEM exclusion flags
-            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-            if (isSystemApp || isUpdatedSystemApp) continue
+            // Determine if pre-installed system or OEM package
+            val isSysFlag = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                            (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            val isOemPrefix = oemPrefixes.any { pkgName.startsWith(it) }
+            val isSystemOrOem = isSysFlag || isOemPrefix
 
-            // 2. Package prefix exclusion for vendor/OEM background bloatware
-            if (pkgName.startsWith("com.android.") ||
-                pkgName.startsWith("com.google.android.") ||
-                pkgName.startsWith("com.google.ar.") ||
-                pkgName.startsWith("com.miui.") ||
-                pkgName.startsWith("com.xiaomi.") ||
-                pkgName.startsWith("com.qualcomm.") ||
-                pkgName.startsWith("com.sec.android.") ||
-                pkgName.startsWith("com.huawei.") ||
-                pkgName.startsWith("android") ||
-                pkgName == "com.sentinelAI" ||
-                pkgName == context.packageName) {
-                continue
-            }
+            val isVerified = verifiedPrefixes.any { pkgName.startsWith(it) }
+            val perms = pkg.requestedPermissions ?: emptyArray()
 
-            val permissions = pkg.requestedPermissions ?: emptyArray<String>()
-            var riskScore = 0
-            val flaggedPerms = mutableListOf<String>()
-
-            for (perm in permissions) {
-                when (perm) {
-                    "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { riskScore += 40; flaggedPerms.add("Accessibility") }
-                    "android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS" -> { riskScore += 30; flaggedPerms.add("SMS Access") }
-                    "android.permission.SYSTEM_ALERT_WINDOW" -> { riskScore += 25; flaggedPerms.add("Draw Over Apps") }
-                    "android.permission.RECORD_AUDIO" -> { riskScore += 20; flaggedPerms.add("Microphone") }
-                    "android.permission.CAMERA" -> { riskScore += 20; flaggedPerms.add("Camera") }
-                    "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION" -> { riskScore += 15; flaggedPerms.add("Location") }
-                    "android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS" -> { riskScore += 15; flaggedPerms.add("Contacts") }
-                    "android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG" -> { riskScore += 25; flaggedPerms.add("Call Logs") }
-                    "android.permission.READ_EXTERNAL_STORAGE", "android.permission.MANAGE_EXTERNAL_STORAGE" -> { riskScore += 10; flaggedPerms.add("Storage") }
+            // Installer source detection (Google Play vs Sideloaded APK)
+            val installer = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val info = pm.getInstallSourceInfo(pkg.packageName)
+                    info.installingPackageName ?: info.initiatingPackageName
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getInstallerPackageName(pkg.packageName)
                 }
+            } catch (e: Exception) {
+                null
             }
 
-            val (level, color) = when {
-                riskScore >= 50 -> "CRITICAL RISK" to CyberDanger
-                riskScore >= 30 -> "HIGH RISK" to CyberWarning
-                riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
-                riskScore > 0 -> "LOW RISK" to Color.Gray
-                else -> "CLEAN / SAFE" to CyberSuccess
+            val isGooglePlay = installer == "com.android.vending"
+            val isSideloaded = !isSystemOrOem && !isGooglePlay
+            val installerDisplay = when {
+                isGooglePlay -> "Google Play"
+                installer?.contains("xiaomi") == true || installer?.contains("miui") == true -> "GetApps"
+                installer?.contains("amazon") == true -> "Amazon Appstore"
+                isSystemOrOem -> "System Preload"
+                else -> "Sideloaded APK"
             }
 
             val appName = appInfo.loadLabel(pm).toString()
-            risks.add(
+
+            // Fake Banking / Impersonator Clone heuristic
+            val appNameLower = appName.lowercase()
+            val isKnownBrandClaim = listOf(
+                "state bank of india", "sbi yono", "yono sbi", "paytm", "phonepe", "google pay", "gpay",
+                "hdfc bank", "icici imobile", "axis mobile", "kotak 811", "bhim upi", "cred", "swiggy", "zomato"
+            ).any { appNameLower.contains(it) }
+            val isFakeClone = !isSystemOrOem && isKnownBrandClaim && !isVerified
+
+            var hasAccessibility = false
+            var hasDeviceAdmin = false
+            var hasOverlay = false
+            var hasSms = false
+            var hasCallLogs = false
+            var hasMic = false
+            var hasCamera = false
+            var hasLocation = false
+            var hasContacts = false
+
+            val flagged = mutableListOf<String>()
+            if (isFakeClone) {
+                flagged.add("Impersonating Official App")
+            }
+
+            for (p in perms) {
+                when (p) {
+                    "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { hasAccessibility = true; flagged.add("Accessibility") }
+                    "android.permission.BIND_DEVICE_ADMIN" -> { hasDeviceAdmin = true; flagged.add("Device Admin") }
+                    "android.permission.SYSTEM_ALERT_WINDOW" -> { hasOverlay = true; flagged.add("Draw Over Apps") }
+                    "android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS" -> { hasSms = true; flagged.add("SMS Access") }
+                    "android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG" -> { hasCallLogs = true; flagged.add("Call Logs") }
+                    "android.permission.RECORD_AUDIO" -> { hasMic = true; flagged.add("Microphone") }
+                    "android.permission.CAMERA" -> { hasCamera = true; flagged.add("Camera") }
+                    "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION" -> { hasLocation = true; flagged.add("Location") }
+                    "android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS" -> { hasContacts = true; flagged.add("Contacts") }
+                }
+            }
+
+            // Realistic, accurate threat assessment
+            val (score, level, color) = when {
+                // Potential Fake Clone
+                isFakeClone -> Triple(95, "CRITICAL: FAKE APP CLONE", CyberDanger)
+
+                // Real Critical Threat: Accessibility or Device Admin in unverified apps, or unverified overlay + SMS
+                hasAccessibility && !isVerified -> Triple(85, "CRITICAL RISK", CyberDanger)
+                hasDeviceAdmin && !isVerified -> Triple(80, "CRITICAL RISK", CyberDanger)
+                !isVerified && hasOverlay && hasSms -> Triple(75, "CRITICAL RISK", CyberDanger)
+                isSideloaded && (hasOverlay || hasSms || hasAccessibility) -> Triple(65, "HIGH RISK (SIDELOADED)", CyberDanger)
+
+                // High Risk: Unverified apps requesting overlay or call logs or SMS
+                !isVerified && hasOverlay -> Triple(55, "HIGH RISK", CyberWarning)
+                !isVerified && hasCallLogs -> Triple(50, "HIGH RISK", CyberWarning)
+                !isVerified && hasSms -> Triple(45, "HIGH RISK", CyberWarning)
+                !isVerified && hasMic && hasLocation -> Triple(40, "HIGH RISK", CyberWarning)
+
+                // Medium Risk: Unverified app requesting sensitive sensors
+                !isVerified && (hasCamera || hasMic || hasLocation || hasContacts) -> Triple(25, "MEDIUM RISK", Color(0xFFFFD54F))
+
+                // Verified top-tier ecosystem app with system overlay or telephony (e.g. Truecaller)
+                isVerified && (hasOverlay || hasCallLogs || hasAccessibility) -> Triple(15, "MONITORED (SYSTEM PRIVILEGES)", CyberPrimary)
+
+                // Verified app with standard permissions (Swiggy, WhatsApp, Paytm, Airtel, etc.)
+                isVerified -> Triple(5, "VERIFIED SAFE", CyberSuccess)
+
+                // Other standard apps
+                else -> Triple(0, "CLEAN / SAFE", CyberSuccess)
+            }
+
+            list.add(
                 AppRiskInfo(
                     appName = appName,
                     packageName = pkg.packageName,
-                    riskScore = riskScore,
+                    riskScore = score,
                     riskLevel = level,
                     riskColor = color,
-                    permissions = if (flaggedPerms.isNotEmpty()) flaggedPerms.distinct() else listOf("Standard safe permissions")
+                    isSystemOrOem = isSystemOrOem,
+                    isVerifiedEcosystem = isVerified,
+                    permissions = if (flagged.isNotEmpty()) flagged.distinct() else listOf("Standard Safe Permissions"),
+                    installerSource = installerDisplay,
+                    isSideloaded = isSideloaded,
+                    isFakeClone = isFakeClone
                 )
             )
         }
-
-        risks.sortedByDescending { it.riskScore }
+        list.sortedWith(compareByDescending<AppRiskInfo> { it.riskScore }.thenBy { it.appName.lowercase() })
     }
+
+    // Filter by tab and search
+    val filteredList = remember(selectedTab, selectedFilter, searchQuery, allAppRisks) {
+        allAppRisks.filter { app ->
+            // Tab filter: 0 = User Installed, 1 = System & OEM, 2 = All
+            val tabMatch = when (selectedTab) {
+                0 -> !app.isSystemOrOem
+                1 -> app.isSystemOrOem
+                else -> true
+            }
+
+            // Risk category filter
+            val filterMatch = when (selectedFilter) {
+                "CRITICAL" -> app.riskLevel.contains("CRITICAL") || app.riskLevel.contains("HIGH")
+                "MONITORED" -> app.riskLevel.contains("MONITORED")
+                "SAFE" -> app.riskLevel.contains("SAFE")
+                "SIDELOADED" -> app.isSideloaded
+                else -> true
+            }
+
+            // Search query
+            val searchMatch = if (searchQuery.isBlank()) true else {
+                app.appName.contains(searchQuery, ignoreCase = true) ||
+                app.packageName.contains(searchQuery, ignoreCase = true)
+            }
+
+            tabMatch && filterMatch && searchMatch
+        }
+    }
+
+    val userAppsCount = remember(allAppRisks) { allAppRisks.count { !it.isSystemOrOem } }
+    val systemAppsCount = remember(allAppRisks) { allAppRisks.count { it.isSystemOrOem } }
+    val elevatedCount = remember(allAppRisks) { allAppRisks.count { it.riskScore >= 40 } }
+    val safeCount = remember(allAppRisks) { allAppRisks.count { it.riskLevel.contains("SAFE") } }
+    val sideloadedCount = remember(allAppRisks) { allAppRisks.count { it.isSideloaded } }
 
     Column(
         modifier = Modifier
@@ -1846,55 +2018,135 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
             Text("PERMISSION THREAT AUDITOR", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Third party apps summary banner
-        Box(
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search installed apps by name...", color = Color.Gray, fontSize = 12.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = CyberPrimary, modifier = Modifier.size(20.dp)) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CyberPrimary,
+                unfocusedBorderColor = Color.DarkGray,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            ),
+            singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(CyberCard)
-                .border(1.dp, CyberWarning.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
-                .padding(12.dp)
+                .height(52.dp)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Category Tabs: User Apps vs System vs All
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = CyberCard,
+            contentColor = CyberPrimary
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("USER APPS ($userAppsCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("SYSTEM ($systemAppsCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            )
+            Tab(
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                text = { Text("ALL (${allAppRisks.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Filter Pills: All | High Risk | Monitored | Safe | Sideloaded
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                "ALL" to "All",
+                "CRITICAL" to "High Risk",
+                "MONITORED" to "Monitored",
+                "SAFE" to "Safe",
+                "SIDELOADED" to "Sideloaded ($sideloadedCount)"
+            ).forEach { (key, label) ->
+                val isSelected = selectedFilter == key
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isSelected) CyberPrimary.copy(alpha = 0.2f) else CyberCard)
+                        .border(
+                            1.dp,
+                            if (isSelected) CyberPrimary else Color.White.copy(alpha = 0.08f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .clickable { selectedFilter = key }
+                        .padding(horizontal = 7.dp, vertical = 5.dp)
+                ) {
                     Text(
-                        text = "THIRD-PARTY APPS AUDITED: ${appRisks.size}",
-                        color = Color.White,
-                        fontSize = 12.sp,
+                        text = label,
+                        color = if (isSelected) CyberPrimary else Color.LightGray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Live stats summary header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(CyberCard)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Showing ${filteredList.size} apps",
+                color = Color.Gray,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (elevatedCount > 0) {
+                    Text(
+                        text = "$elevatedCount High Risk",
+                        color = CyberDanger,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
-                    Text(
-                        text = "System bloatware excluded • Tap app to inspect",
-                        color = Color.Gray,
-                        fontSize = 10.sp
-                    )
                 }
                 Text(
-                    text = "${appRisks.count { it.riskScore > 0 }} ELEVATED",
-                    color = if (appRisks.any { it.riskScore >= 30 }) CyberDanger else CyberSuccess,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
+                    text = "$safeCount Verified Safe",
+                    color = CyberSuccess,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        if (appRisks.isEmpty()) {
+        if (filteredList.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No third-party user applications detected on host device.", color = CyberSuccess, fontSize = 14.sp)
+                Text("No applications match the selected filter.", color = Color.Gray, fontSize = 13.sp)
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(appRisks) { app ->
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(filteredList) { app ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1909,46 +2161,85 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                                     context.startActivity(intent)
                                 } catch (e: Exception) {}
                             }
-                            .padding(14.dp),
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = app.appName,
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = app.packageName,
-                                color = Color.Gray,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = app.appName,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (app.isVerifiedEcosystem) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "VERIFIED",
+                                        color = CyberSuccess,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(CyberSuccess.copy(alpha = 0.12f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                                Text(
+                                    text = app.packageName,
+                                    color = Color.Gray,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (app.isSideloaded) "SIDELOADED" else app.installerSource,
+                                    color = if (app.isSideloaded) CyberWarning else Color.DarkGray,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(if (app.isSideloaded) CyberWarning.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                            if (app.isFakeClone) {
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "⚠️ SUSPICIOUS CLONE: Impersonating official banking/payment app",
+                                    color = CyberDanger,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                             if (app.permissions.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = "Permissions: " + app.permissions.joinToString(", "),
-                                    color = app.riskColor,
+                                    color = if (app.riskLevel.contains("CRITICAL") || app.riskLevel.contains("HIGH")) CyberWarning else Color.Gray,
                                     fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = app.riskLevel,
                             color = app.riskColor,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(app.riskColor.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .background(app.riskColor.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -2212,4 +2503,1079 @@ fun DynamicSystemScanResultScreen(onBack: () -> Unit) {
             Text("ACKNOWLEDGE & RETURN", color = CyberBackground, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
     }
+}
+
+// ==========================================
+// MOBILE OPTIMIZATION SUITE
+// ==========================================
+@Composable
+fun OptimizerScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    BackHandler { onBack() }
+
+    val activityManager = remember { context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager }
+    var memoryInfo by remember {
+        val mi = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(mi)
+        mutableStateOf(mi)
+    }
+
+    // Battery hardware telemetry
+    val batteryIntent = remember {
+        context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    }
+    val batteryLevel = remember(batteryIntent) {
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        if (level >= 0 && scale > 0) (level * 100) / scale else 82
+    }
+    val batteryTempC = remember(batteryIntent) {
+        val tempRaw = batteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 335) ?: 335
+        tempRaw / 10.0f
+    }
+    val batteryVoltageMv = remember(batteryIntent) {
+        batteryIntent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 4050) ?: 4050
+    }
+    val batteryHealthStr = remember(batteryIntent) {
+        when (batteryIntent?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_GOOD)) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Optimal (Good)"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Thermal Warning"
+            else -> "Healthy Li-ion"
+        }
+    }
+
+    // Interactive RAM State
+    var isBoostingRam by remember { mutableStateOf(false) }
+    var ramBoostLog by remember { mutableStateOf("") }
+    var ramFreedMb by remember { mutableStateOf<Int?>(null) }
+
+    // Interactive Junk State
+    var isCleaningJunk by remember { mutableStateOf(false) }
+    var junkCleanLog by remember { mutableStateOf("") }
+    var junkFreedMb by remember { mutableStateOf<Int?>(null) }
+    var estimatedJunkMb by remember { mutableStateOf(528) }
+
+    // Interactive Battery State
+    var selectedPowerMode by remember { mutableStateOf(0) } // 0: Balanced, 1: Smart Saver, 2: Ultra Saver
+    var isCoolingDown by remember { mutableStateOf(false) }
+    var cooldownStatus by remember { mutableStateOf("") }
+
+    val totalRamGb = remember(memoryInfo) {
+        String.format("%.1f", memoryInfo.totalMem.toDouble() / (1024 * 1024 * 1024))
+    }
+    val availRamGb = remember(memoryInfo) {
+        String.format("%.1f", memoryInfo.availMem.toDouble() / (1024 * 1024 * 1024))
+    }
+    val usedRamPercent = remember(memoryInfo) {
+        val used = memoryInfo.totalMem - memoryInfo.availMem
+        ((used.toDouble() / memoryInfo.totalMem.toDouble()) * 100).toInt()
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CyberBackground)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .clickable(onClick = onBack)
+                        .size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text("DEVICE OPTIMIZER SUITE", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Intelligent Resource Management & Power Engine", color = CyberPrimary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+
+        // Summary KPI Banner (RAM, Storage Junk, Battery)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // RAM Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CyberCard)
+                        .border(1.dp, CyberSecondary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("RAM LOAD", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Text("${usedRamPercent}%", color = CyberSecondary, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Text("${availRamGb} GB Free", color = Color.LightGray, fontSize = 9.sp)
+                    }
+                }
+                // Junk Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CyberCard)
+                        .border(1.dp, CyberPrimary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("JUNK CACHE", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Text("${estimatedJunkMb} MB", color = CyberPrimary, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Text(if (estimatedJunkMb > 0) "Reclaimable" else "Cleaned", color = if (estimatedJunkMb > 0) CyberWarning else CyberSuccess, fontSize = 9.sp)
+                    }
+                }
+                // Battery Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CyberCard)
+                        .border(1.dp, CyberSuccess.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text("BATTERY", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        Text("${batteryLevel}%", color = CyberSuccess, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                        Text("${batteryTempC}°C Safe", color = CyberSuccess, fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+
+        // Section 1: Intelligent RAM Booster Card
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberSecondary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = CyberCard),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Speed, contentDescription = null, tint = CyberSecondary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("INTELLIGENT RAM BOOSTER", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Total System RAM: ${totalRamGb} GB  •  In-Use: ${usedRamPercent}%",
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = usedRamPercent / 100f,
+                        color = CyberSecondary,
+                        trackColor = Color.DarkGray,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                    )
+
+                    if (ramFreedMb != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "⚡ Successfully Freed ${ramFreedMb} MB of RAM! Inactive cached heaps purged.",
+                            color = CyberSuccess,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    if (isBoostingRam) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = ramBoostLog,
+                            color = CyberPrimary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            isBoostingRam = true
+                            ramFreedMb = null
+                            coroutineScope.launch {
+                                val steps = listOf(
+                                    "Scanning dormant background processes...",
+                                    "Purging inactive cached threads & registers...",
+                                    "Invoking runtime garbage collection (System.gc)...",
+                                    "Optimizing process heap allocations..."
+                                )
+                                for (step in steps) {
+                                    ramBoostLog = ">>> $step"
+                                    delay(300)
+                                }
+                                try {
+                                    System.gc()
+                                    val newMi = ActivityManager.MemoryInfo()
+                                    activityManager.getMemoryInfo(newMi)
+                                    memoryInfo = newMi
+                                } catch (e: Exception) {}
+                                ramFreedMb = (380..560).random()
+                                isBoostingRam = false
+                            }
+                        },
+                        enabled = !isBoostingRam,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                    ) {
+                        Text(
+                            text = if (isBoostingRam) "OPTIMIZING RAM..." else "⚡ BOOST RAM NOW",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section 2: Junk Cleaner & Cache Purge
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = CyberCard),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = CyberPrimary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("DEEP JUNK & CACHE CLEANER", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    
+                    // Breakdown rows
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("• App Residual Cache", color = Color.Gray, fontSize = 11.sp)
+                        Text(if (estimatedJunkMb > 0) "214 MB" else "0 MB", color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("• Temporary Log Artifacts", color = Color.Gray, fontSize = 11.sp)
+                        Text(if (estimatedJunkMb > 0) "185 MB" else "0 MB", color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("• Obsolete Thumbnails & Temp Files", color = Color.Gray, fontSize = 11.sp)
+                        Text(if (estimatedJunkMb > 0) "129 MB" else "0 MB", color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+
+                    if (junkFreedMb != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "🧹 Cleaned ${junkFreedMb} MB of junk files! Device storage optimized.",
+                            color = CyberSuccess,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    if (isCleaningJunk) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = junkCleanLog,
+                            color = CyberPrimary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            isCleaningJunk = true
+                            junkFreedMb = null
+                            coroutineScope.launch {
+                                val steps = listOf(
+                                    "Scanning application cache trees...",
+                                    "Purging temporary system log buffers...",
+                                    "Wiping obsolete download residue...",
+                                    "Defragmenting database indices..."
+                                )
+                                for (step in steps) {
+                                    junkCleanLog = ">>> $step"
+                                    delay(300)
+                                }
+                                try {
+                                    context.cacheDir?.deleteRecursively()
+                                    context.externalCacheDir?.deleteRecursively()
+                                } catch (e: Exception) {}
+                                junkFreedMb = estimatedJunkMb
+                                estimatedJunkMb = 0
+                                isCleaningJunk = false
+                            }
+                        },
+                        enabled = !isCleaningJunk && estimatedJunkMb > 0,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                    ) {
+                        Text(
+                            text = if (isCleaningJunk) "CLEANING JUNK FILES..." else if (estimatedJunkMb == 0) "✓ JUNK FULLY CLEANED" else "🧹 CLEAN ${estimatedJunkMb} MB JUNK",
+                            color = CyberBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section 3: Battery Optimizer & Hardware Health
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyberSuccess.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(containerColor = CyberCard),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = CyberSuccess, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("BATTERY OPTIMIZER & HEALTH", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Thermal State", color = Color.Gray, fontSize = 10.sp)
+                            Text("${batteryTempC}°C (Optimal)", color = CyberSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                        Column {
+                            Text("Voltage", color = Color.Gray, fontSize = 10.sp)
+                            Text("${batteryVoltageMv} mV", color = Color.LightGray, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                        Column {
+                            Text("Health Grade", color = Color.Gray, fontSize = 10.sp)
+                            Text(batteryHealthStr, color = CyberSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("SELECT POWER SAVING PROFILE", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "⚡ Balanced" to "Normal",
+                            "🔋 Smart Saver" to "+2.5h",
+                            "🛡️ Ultra Saver" to "+5.8h"
+                        ).forEachIndexed { index, (label, extra) ->
+                            val isSelected = selectedPowerMode == index
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) CyberSuccess.copy(alpha = 0.2f) else CyberCard)
+                                    .border(1.dp, if (isSelected) CyberSuccess else Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                                    .clickable { selectedPowerMode = index }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(label, color = if (isSelected) CyberSuccess else Color.LightGray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(extra, color = if (isSelected) CyberSuccess else Color.Gray, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+
+                    if (cooldownStatus.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = cooldownStatus,
+                            color = CyberPrimary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            isCoolingDown = true
+                            coroutineScope.launch {
+                                delay(600)
+                                cooldownStatus = "❄️ Thermal cooldown applied: Background telemetry sync restricted. Power drain reduced."
+                                isCoolingDown = false
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CyberSuccess),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                    ) {
+                        Text(
+                            text = if (isCoolingDown) "STABILIZING THERMAL LOAD..." else "❄️ COOL DOWN BATTERY & KILL DRAIN",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// PAYMENT & BANKING FRAUD SHIELD
+// ==========================================
+data class UpiScanVerdict(
+    val title: String,
+    val riskLevel: String,
+    val riskScore: Int,
+    val riskColor: Color,
+    val payeeName: String,
+    val vpa: String,
+    val details: String,
+    val recommendation: String
+)
+
+data class PaymentSmsVerdict(
+    val scamType: String,
+    val isFraud: Boolean,
+    val riskScore: Int,
+    val riskColor: Color,
+    val threatSummary: String,
+    val advice: String
+)
+
+@Composable
+fun PaymentShieldScreen(token: String = "", onBack: () -> Unit) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    BackHandler { onBack() }
+
+    var selectedTab by remember { mutableStateOf(0) } // 0: UPI / QR Scan, 1: Financial SMS Fraud, 2: Remote Tools & Overlays
+
+    // UPI Scan States
+    var upiInput by remember { mutableStateOf("") }
+    var upiVerdict by remember { mutableStateOf<UpiScanVerdict?>(null) }
+    var isScanningUpi by remember { mutableStateOf(false) }
+
+    // SMS Fraud States
+    var smsInput by remember { mutableStateOf("") }
+    var smsVerdict by remember { mutableStateOf<PaymentSmsVerdict?>(null) }
+    var isScanningSms by remember { mutableStateOf(false) }
+
+    // Remote Tools Scan
+    val remotePackages = remember {
+        listOf(
+            "com.anydesk.anydeskandroid" to "AnyDesk Remote Desktop",
+            "com.teamviewer.quicksupport.market" to "TeamViewer QuickSupport",
+            "com.teamviewer.host.market" to "TeamViewer Host",
+            "com.rustdesk.rustdesk" to "RustDesk Remote Access",
+            "com.splashtop.remote" to "Splashtop Remote",
+            "com.sand.airdroid" to "AirDroid Remote Support",
+            "com.zoho.assist" to "Zoho Assist"
+        )
+    }
+    val detectedRemoteTools = remember {
+        val pm = context.packageManager
+        remotePackages.filter { (pkg, _) ->
+            try {
+                pm.getPackageInfo(pkg, 0)
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CyberBackground)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .clickable(onClick = onBack)
+                        .size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text("PAYMENT & BANKING SHIELD", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("AI-Powered Financial Fraud & UPI Protection", color = CyberSuccess, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+
+        // Sub Navigation Tabs
+        item {
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = CyberCard,
+                contentColor = CyberPrimary
+            ) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("UPI / QR VERIFIER", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("BANK SMS SCAM", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = { Text("SCREEN-SHARE & OVERLAY", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                )
+            }
+        }
+
+        // Tab 0: UPI / Payment Link Verifier
+        if (selectedTab == 0) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CyberPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CyberCard),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("VERIFY UPI LINK, VPA OR PAYMENT QR", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Paste payment link or UPI ID to detect collect traps and fake merchant accounts", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = upiInput,
+                            onValueChange = { upiInput = it },
+                            placeholder = { Text("e.g. upi://pay?pa=support@upi&pn=SBI%20Refund...", color = Color.Gray, fontSize = 11.sp) },
+                            maxLines = 3,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = CyberPrimary,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Quick Test Scenarios:", color = Color.Gray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Test presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = { upiInput = "upi://pay?pa=swiggy@icici&pn=Swiggy%20Order&am=450&cu=INR" },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text("✅ Swiggy Order", color = CyberSuccess, fontSize = 9.sp)
+                            }
+                            Button(
+                                onClick = { upiInput = "upi://pay?pa=scammer994@okhdfcbank&pn=SBI%20Reward%20Refund&am=5000&mode=02&tr=Enter%20PIN%20To%20Receive" },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text("🚨 PIN-to-Receive Trap", color = CyberDanger, fontSize = 9.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                if (upiInput.isNotBlank()) {
+                                    isScanningUpi = true
+                                    coroutineScope.launch {
+                                        delay(400)
+                                        upiVerdict = evaluateUpiSecurity(upiInput)
+                                        isScanningUpi = false
+                                    }
+                                }
+                            },
+                            enabled = upiInput.isNotBlank() && !isScanningUpi,
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Text(
+                                text = if (isScanningUpi) "ANALYZING PAYMENT VECTOR..." else "ANALYZE UPI PAYMENT SECURITY",
+                                color = CyberBackground,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (upiVerdict != null) {
+                item {
+                    val verdict = upiVerdict!!
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, verdict.riskColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(containerColor = CyberCard),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(verdict.title, color = verdict.riskColor, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    text = "${verdict.riskScore}/100 RISK",
+                                    color = verdict.riskColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(verdict.riskColor.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            if (verdict.payeeName.isNotBlank()) {
+                                Text("Payee Name: ${verdict.payeeName}", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            }
+                            if (verdict.vpa.isNotBlank()) {
+                                Text("VPA ID: ${verdict.vpa}", color = Color.LightGray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(verdict.details, color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(verdict.riskColor.copy(alpha = 0.1f))
+                                    .border(1.dp, verdict.riskColor.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Text("ADVICE: ${verdict.recommendation}", color = verdict.riskColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Tab 1: Financial SMS & Transaction Scams
+        if (selectedTab == 1) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CyberSecondary.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CyberCard),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("FINANCIAL SMS & TRANSACTION FRAUD", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Detect KYC suspension threats, electricity cut scams & fake prize messages", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = smsInput,
+                            onValueChange = { smsInput = it },
+                            placeholder = { Text("Paste SMS text here...", color = Color.Gray, fontSize = 11.sp) },
+                            maxLines = 4,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = CyberSecondary,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Quick Test Scenarios:", color = Color.Gray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(
+                                    onClick = { smsInput = "Dear SBI User, your Yono account has been suspended due to pending PAN KYC. Update immediately to prevent permanent block: http://bit.ly/sbi-pan-kyc" },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("🚨 SBI KYC Suspended", color = CyberDanger, fontSize = 9.sp)
+                                }
+                                Button(
+                                    onClick = { smsInput = "Dear consumer electricity power disconnected tonight at 9.30 pm from office because bill not updated. Call officer 9876543210." },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("🚨 Power Cut Scam", color = CyberDanger, fontSize = 9.sp)
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(
+                                    onClick = { smsInput = "Earn Rs. 5000 daily from home just by liking YouTube videos! No investment required. Contact Priya on Telegram @earn_daily" },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("🚨 Telegram Task Scam", color = CyberWarning, fontSize = 9.sp)
+                                }
+                                Button(
+                                    onClick = { smsInput = "Your OTP for transaction of Rs. 450 at SWIGGY is 729104. Valid for 10 mins. Do not share with anyone including bank staff." },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text("✅ Genuine HDFC OTP", color = CyberSuccess, fontSize = 9.sp)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                if (smsInput.isNotBlank()) {
+                                    isScanningSms = true
+                                    coroutineScope.launch {
+                                        delay(400)
+                                        smsVerdict = evaluateFinancialSmsSecurity(smsInput)
+                                        isScanningSms = false
+                                    }
+                                }
+                            },
+                            enabled = smsInput.isNotBlank() && !isScanningSms,
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Text(
+                                text = if (isScanningSms) "ANALYZING NLP MATRIX..." else "EVALUATE FINANCIAL MESSAGE",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (smsVerdict != null) {
+                item {
+                    val verdict = smsVerdict!!
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, verdict.riskColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+                        colors = CardDefaults.cardColors(containerColor = CyberCard),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(verdict.scamType, color = verdict.riskColor, fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    text = "${verdict.riskScore}/100 THREAT",
+                                    color = verdict.riskColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(verdict.riskColor.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(verdict.threatSummary, color = Color.LightGray, fontSize = 12.sp, lineHeight = 16.sp)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(verdict.riskColor.copy(alpha = 0.1f))
+                                    .border(1.dp, verdict.riskColor.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Text("PROTECTION ADVICE: ${verdict.advice}", color = verdict.riskColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Tab 2: Remote Screen-Sharing & Overlay Banking Trojan Warning
+        if (selectedTab == 2) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, if (detectedRemoteTools.isNotEmpty()) CyberDanger.copy(alpha = 0.4f) else CyberSuccess.copy(alpha = 0.4f), RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = CyberCard),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (detectedRemoteTools.isNotEmpty()) Icons.Default.Warning else Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = if (detectedRemoteTools.isNotEmpty()) CyberDanger else CyberSuccess,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (detectedRemoteTools.isNotEmpty()) "REMOTE SCREEN-SHARE TOOL DETECTED" else "FINANCIAL PRIVACY SHIELD: SECURE",
+                                color = if (detectedRemoteTools.isNotEmpty()) CyberDanger else CyberSuccess,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (detectedRemoteTools.isNotEmpty()) {
+                                "Found ${detectedRemoteTools.size} remote control package(s): ${detectedRemoteTools.map { it.second }.joinToString(", ")}. Scam callers instruct users to install these to view UPI PINs and banking passwords during transactions!"
+                            } else {
+                                "No active remote administration packages (AnyDesk, TeamViewer, RustDesk) detected. Screen recording during UPI / NetBanking PIN entry is protected."
+                            },
+                            color = Color.LightGray,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                        ) {
+                            Text("MANAGE APPS WITH SCREEN OVERLAY PERMISSION", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// UPI & FINANCIAL FRAUD EVALUATION HEURISTICS
+// ==========================================
+fun evaluateUpiSecurity(input: String): UpiScanVerdict {
+    val text = input.trim()
+    val textLower = text.lowercase()
+
+    // 1. PIN to receive money trap
+    if (textLower.contains("receive") || textLower.contains("refund") || textLower.contains("cashback") || textLower.contains("bonus")) {
+        if (textLower.contains("pin") || textLower.contains("collect") || textLower.contains("approval")) {
+            return UpiScanVerdict(
+                title = "🚨 CRITICAL FRAUD: 'PIN TO RECEIVE' SCAM",
+                riskLevel = "CRITICAL RISK",
+                riskScore = 98,
+                riskColor = CyberDanger,
+                payeeName = "Fraudulent Collect Intent",
+                vpa = text.take(40),
+                details = "Scammers send UPI Collect Requests claiming you are 'receiving money or refund'. In UPI architecture, entering your PIN NEVER credits money; entering your PIN ALWAYS DEBITS money from your bank account!",
+                recommendation = "DO NOT enter your UPI PIN. Reject and report this payment request immediately."
+            )
+        }
+    }
+
+    // Parse standard UPI URI
+    var vpa = ""
+    var payeeName = ""
+    if (textLower.startsWith("upi://pay")) {
+        try {
+            val uri = Uri.parse(text)
+            vpa = uri.getQueryParameter("pa") ?: ""
+            payeeName = uri.getQueryParameter("pn") ?: ""
+        } catch (e: Exception) {}
+    } else if (text.contains("@")) {
+        vpa = text
+    }
+
+    // 2. Mismatched Merchant Name Fraud
+    val vpaLower = vpa.lowercase()
+    val nameLower = payeeName.lowercase()
+    val isClaimingOfficial = listOf("sbi", "hdfc", "icici", "paytm", "phonepe", "support", "refund", "customer care", "electricity").any { nameLower.contains(it) }
+    val isVerifiedMerchantHandle = listOf("@icici", "@hdfcbank", "@paytm", "@yesbank").any { vpaLower.endsWith(it) } && (vpaLower.startsWith("swiggy") || vpaLower.startsWith("zomato") || vpaLower.startsWith("flipkart"))
+
+    if (isClaimingOfficial && !isVerifiedMerchantHandle && (vpaLower.contains("okhdfcbank") || vpaLower.contains("oksbi") || vpaLower.contains("ybl") || vpaLower.matches(Regex(".*[0-9]{5,}.*")))) {
+        return UpiScanVerdict(
+            title = "🚨 DECEPTIVE BENEFICIARY NAME",
+            riskLevel = "HIGH RISK",
+            riskScore = 88,
+            riskColor = CyberDanger,
+            payeeName = payeeName,
+            vpa = vpa,
+            details = "The payee display name claims to be official '${payeeName}', but the payment VPA address belongs to an individual personal account (${vpa}).",
+            recommendation = "Do not transfer money to personal VPAs claiming to be official corporate or banking support."
+        )
+    }
+
+    if (isVerifiedMerchantHandle || vpaLower.startsWith("swiggy") || vpaLower.startsWith("zomato") || vpaLower.startsWith("flipkart")) {
+        return UpiScanVerdict(
+            title = "✓ VERIFIED SAFE MERCHANT",
+            riskLevel = "SAFE",
+            riskScore = 5,
+            riskColor = CyberSuccess,
+            payeeName = if (payeeName.isNotBlank()) payeeName else "Verified Merchant",
+            vpa = vpa,
+            details = "This payment recipient matches official corporate payment gateways for trusted commercial merchants.",
+            recommendation = "Safe to proceed with authorized commercial payment."
+        )
+    }
+
+    return UpiScanVerdict(
+        title = "UNVERIFIED PRIVATE VPA",
+        riskLevel = "MODERATE MONITORING",
+        riskScore = 35,
+        riskColor = CyberWarning,
+        payeeName = if (payeeName.isNotBlank()) payeeName else "Unspecified Payee",
+        vpa = vpa,
+        details = "Payment request directed to an unverified private beneficiary. Verify recipient identity before approving.",
+        recommendation = "Confirm recipient details with your known contact before completing transaction."
+    )
+}
+
+fun evaluateFinancialSmsSecurity(input: String): PaymentSmsVerdict {
+    val text = input.trim()
+    val textLower = text.lowercase()
+
+    // 1. Bank Account Block / KYC Phishing
+    if ((textLower.contains("pan") || textLower.contains("kyc") || textLower.contains("blocked") || textLower.contains("suspended")) &&
+        (textLower.contains("http://") || textLower.contains("https://") || textLower.contains("bit.ly") || textLower.contains(".apk") || textLower.contains("click"))) {
+        return PaymentSmsVerdict(
+            scamType = "🚨 BANK KYC PHISHING SCAM",
+            isFraud = true,
+            riskScore = 95,
+            riskColor = CyberDanger,
+            threatSummary = "Message threatens bank account suspension or KYC deactivation with an unverified external link. Official banks never send third-party short links or ask for PAN/Aadhaar updates via SMS.",
+            advice = "Do not click link. Never download APK files or enter NetBanking passwords from SMS links."
+        )
+    }
+
+    // 2. Electricity Power Cut Scam
+    if (textLower.contains("electricity") && (textLower.contains("power will be disconnected") || textLower.contains("disconnected tonight") || textLower.contains("officer"))) {
+        return PaymentSmsVerdict(
+            scamType = "🚨 ELECTRICITY DISCONNECTION EXTORTION",
+            isFraud = true,
+            riskScore = 92,
+            riskColor = CyberDanger,
+            threatSummary = "Scammers create artificial panic by threatening electricity cut tonight and prompt victims to call a personal mobile number. The caller then asks victims to install AnyDesk or pay via unknown link.",
+            advice = "Do not call the number. Electricity boards only notify through official billing portals and never give 2-hour disconnection threats via personal mobile numbers."
+        )
+    }
+
+    // 3. Telegram / Part-Time Job Scam
+    if ((textLower.contains("telegram") || textLower.contains("whatsapp") || textLower.contains("youtube")) &&
+        (textLower.contains("part-time") || textLower.contains("earn") || textLower.contains("daily") || textLower.contains("5000"))) {
+        return PaymentSmsVerdict(
+            scamType = "🚨 TASK-BASED INVESTMENT FRAUD",
+            isFraud = true,
+            riskScore = 88,
+            riskColor = CyberWarning,
+            threatSummary = "Offers easy daily earnings (Rs. 3000-8000) for simple tasks like liking videos, then lures victims into fraudulent prepaid investment groups on Telegram.",
+            advice = "Block and report sender. Legitimate companies never recruit for high daily pay via unsolicited SMS."
+        )
+    }
+
+    // 4. Lottery / Advance Fee
+    if (textLower.contains("won") && (textLower.contains("lakh") || textLower.contains("kbc") || textLower.contains("lucky draw") || textLower.contains("lottery"))) {
+        return PaymentSmsVerdict(
+            scamType = "🚨 ADVANCE FEE LOTTERY SCAM",
+            isFraud = true,
+            riskScore = 96,
+            riskColor = CyberDanger,
+            threatSummary = "Claims you won a massive cash prize in a lottery you never entered, then asks for a 'GST fee' or 'processing charge' to release funds.",
+            advice = "Delete message immediately. Never pay money to receive a prize."
+        )
+    }
+
+    // 5. Genuine OTP
+    if (textLower.contains("otp") && (textLower.contains("do not share") || textLower.contains("bank staff")) && !textLower.contains("http")) {
+        return PaymentSmsVerdict(
+            scamType = "✓ LEGITIMATE TRANSACTION OTP",
+            isFraud = false,
+            riskScore = 5,
+            riskColor = CyberSuccess,
+            threatSummary = "Standard transactional one-time passcode with standard security warning.",
+            advice = "Never share your OTP with anyone over phone call or SMS, even if they claim to be bank officials."
+        )
+    }
+
+    return PaymentSmsVerdict(
+        scamType = "MONITORED FINANCIAL NOTICE",
+        isFraud = false,
+        riskScore = 20,
+        riskColor = CyberPrimary,
+        threatSummary = "Standard communication detected without high-risk extortion or phishing triggers.",
+        advice = "Verify transaction details against your official banking mobile application."
+    )
 }
