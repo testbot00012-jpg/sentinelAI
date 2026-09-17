@@ -3,7 +3,7 @@ import requests
 import datetime
 import logging
 from typing import List, Optional, Dict
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from pydantic import BaseModel
 from app.core.security import get_current_user
 
@@ -47,7 +47,10 @@ class ChatResponse(BaseModel):
     timestamp: str
 
 @router.post("", response_model=ChatResponse)
-async def send_chat_message(req: ChatRequest, current_user: dict = Depends(get_current_user)):
+async def send_chat_message(
+    req: ChatRequest,
+    authorization: Optional[str] = Header(None)
+):
     """
     Processes user security questions through Groq AI high-speed inference engine.
     """
