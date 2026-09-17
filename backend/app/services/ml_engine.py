@@ -15,6 +15,7 @@ from app.ml.feature_extractors import (
     extract_apk_permission_vector,
     explain_apk_permissions,
     SHORTENER_DOMAINS,
+    SUSPICIOUS_TLDS,
     SCAM_SMS_KEYWORDS
 )
 
@@ -154,6 +155,27 @@ class SentinelMLEngine:
         except Exception:
             domain = ""
 
+        domain_lower = domain.lower()
+        url_lower = url_norm.lower()
+
+        # Whitelist of trusted high-reputation domains (instant sub-millisecond return)
+        SAFE_DOMAINS = {
+            "google.com", "www.google.com", "github.com", "www.github.com",
+            "wikipedia.org", "en.wikipedia.org", "microsoft.com", "www.microsoft.com",
+            "apple.com", "www.apple.com", "amazon.com", "www.amazon.com",
+            "paypal.com", "www.paypal.com", "chase.com", "www.chase.com",
+            "netflix.com", "www.netflix.com", "youtube.com", "www.youtube.com",
+            "twitter.com", "x.com", "linkedin.com", "facebook.com", "instagram.com",
+            "reddit.com", "railway.app", "railway.com", "firebase.google.com"
+        }
+        if domain_lower in SAFE_DOMAINS and "@" not in url_norm and "//" not in parsed.path:
+            return {
+                "url": url,
+                "status": "Safe",
+                "score": 5.0,
+                "details": ["Verified legitimate global authority domain name"]
+            }
+
         # Extract features and explanations
         features = extract_url_features(url_norm)
         details = explain_url_features(url_norm)
@@ -201,15 +223,94 @@ class SentinelMLEngine:
             except Exception:
                 pass
 
-        # Calibrate final score
-        final_score = round(min(max(ml_score, 5.0), 99.0), 1)
+        # Deterministic Phishing Signatures & High-Precision Heuristics
+        domain_lower = domain.lower()
+        url_lower = url_norm.lower()
 
-        if final_score < 40.0:
+        # 1. Whitelist of trusted high-reputation domains (prevents false positives)
+        SAFE_DOMAINS = {
+            "google.com", "www.google.com", "github.com", "www.github.com",
+            "wikipedia.org", "en.wikipedia.org", "microsoft.com", "www.microsoft.com",
+            "apple.com", "www.apple.com", "amazon.com", "www.amazon.com",
+            "paypal.com", "www.paypal.com", "chase.com", "www.chase.com",
+            "netflix.com", "www.netflix.com", "youtube.com", "www.youtube.com",
+            "twitter.com", "x.com", "linkedin.com", "facebook.com", "instagram.com",
+            "reddit.com", "railway.app", "railway.com", "firebase.google.com"
+        }
+        is_whitelisted = domain_lower in SAFE_DOMAINS and "@" not in url_norm and "//" not in parsed.path
+
+        # 2. Targeted Brands Spoofing & Impersonation
+        BRAND_OFFICIAL_MAP = {
+            "paypal": ["paypal.com"],
+            "apple": ["apple.com", "icloud.com"],
+            "chase": ["chase.com"],
+            "netflix": ["netflix.com"],
+            "wellsfargo": ["wellsfargo.com"],
+            "bankofamerica": ["bankofamerica.com"],
+            "binance": ["binance.com"],
+            "coinbase": ["coinbase.com"],
+            "metamask": ["metamask.io"],
+            "steam": ["steampowered.com", "steamcommunity.com"],
+            "amazon": ["amazon.com"],
+            "microsoft": ["microsoft.com", "live.com", "office.com"],
+            "google": ["google.com", "youtube.com"]
+        }
+
+        brand_spoofed = False
+        for brand, official_domains in BRAND_OFFICIAL_MAP.items():
+            if brand in url_lower:
+                is_official = any(domain_lower == od or domain_lower.endswith("." + od) for od in official_domains)
+                if not is_official:
+                    brand_spoofed = True
+                    ml_score = max(ml_score, 96.0)
+                    details.insert(0, f"Brand Impersonation: Detected spoofed brand '{brand.capitalize()}' on domain '{domain}'")
+                    break
+
+        # 3. Numeric IPv4 / IPv6 host
+        ip_pattern = r"^(?:\d{1,3}\.){3}\d{1,3}$|^(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}$"
+        if re.match(ip_pattern, domain):
+            ml_score = max(ml_score, 93.5)
+            details.insert(0, f"Bare IP Address Host: URL uses direct IP '{domain}' instead of a registered domain name")
+
+        # 4. IDN Homograph Punycode attack
+        if "xn--" in domain_lower:
+            ml_score = max(ml_score, 95.0)
+            details.insert(0, "Punycode Homograph Attack: Host contains encoded 'xn--' characters spoofing brand lookalikes")
+
+        # 5. High-Abuse TLD with Phishing Lures
+        tld = domain_lower.split(".")[-1] if "." in domain_lower else ""
+        if tld in SUSPICIOUS_TLDS:
+            has_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "account", "update", "bank", "wallet", "claim", "prize", "auth", "kyc", "alert"])
+            if has_lure:
+                ml_score = max(ml_score, 94.0)
+                details.insert(0, f"Suspicious TLD Abuse: High-abuse '.{tld}' domain paired with authentication/credential lure keywords")
+
+        # 6. Ephemeral Free Tunneling / Forwarding Abuse
+        TUNNEL_SERVICES = ["ngrok-free.app", "ngrok.io", "loca.lt", "trycloudflare.com", "glitch.me", "pagekite.me"]
+        if any(ts in domain_lower for ts in TUNNEL_SERVICES):
+            has_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "bank", "account", "update"])
+            if has_lure:
+                ml_score = max(ml_score, 92.5)
+                details.insert(0, f"Abused Cloud Tunnel: Ephemeral tunnel provider '{domain}' hosting credential phishing interface")
+
+        # 7. Subdomain Stacking with Credential Keywords
+        if domain_lower.count(".") >= 3 and any(kw in url_lower for kw in ["login", "signin", "verify", "bank"]):
+            ml_score = max(ml_score, 88.0)
+            details.append("Excessive Subdomains: Host contains 4+ domain levels attempting visual authority masking")
+
+        # Apply whitelist suppression
+        if is_whitelisted and not brand_spoofed:
+            final_score = 5.0
             status = "Safe"
-        elif final_score < 70.0:
-            status = "Suspicious"
+            details = ["Verified legitimate global authority domain name"]
         else:
-            status = "Phishing"
+            final_score = round(min(max(ml_score, 5.0), 99.0), 1)
+            if final_score < 40.0:
+                status = "Safe"
+            elif final_score < 70.0:
+                status = "Suspicious"
+            else:
+                status = "Phishing"
 
         return {
             "url": url,

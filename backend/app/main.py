@@ -3,7 +3,7 @@ import warnings
 warnings.filterwarnings("ignore", message=r".*urllib3.*doesn't match a supported version.*")
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth, scan, analytics, admin
+from app.routes import auth, scan, analytics, admin, chat
 
 app = FastAPI(
     title="Sentinel AI - Smart Mobile Security, Fraud Detection & Optimization Platform API",
@@ -25,6 +25,7 @@ app.include_router(auth.router)
 app.include_router(scan.router)
 app.include_router(analytics.router)
 app.include_router(admin.router)
+app.include_router(chat.router)
 
 @app.get("/")
 def read_root():
