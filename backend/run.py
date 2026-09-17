@@ -1,4 +1,6 @@
 import os
+import warnings
+warnings.filterwarnings("ignore", message=r".*urllib3.*doesn't match a supported version.*")
 import uvicorn
 
 if __name__ == "__main__":

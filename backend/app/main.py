@@ -1,4 +1,6 @@
 import os
+import warnings
+warnings.filterwarnings("ignore", message=r".*urllib3.*doesn't match a supported version.*")
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, scan, analytics, admin
