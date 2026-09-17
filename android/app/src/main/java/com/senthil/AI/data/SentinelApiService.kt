@@ -65,9 +65,26 @@ data class ChatMessage(val role: String, val content: String)
 data class ChatRequest(val message: String, val history: List<ChatMessage> = emptyList())
 data class ChatResponse(val reply: String, val model: String, val timestamp: String)
 
+data class DeviceTelemetryRequest(
+    val device_model: String,
+    val os_version: String,
+    val security_score: Int,
+    val battery_health: Int,
+    val ram_usage_percent: Double,
+    val storage_usage_percent: Double
+)
+
+data class TelemetryResponse(val message: String)
+
 interface SentinelApiService {
     @POST("api/auth/verify")
     suspend fun verifyFirebaseToken(@Body req: FirebaseTokenRequest): AuthResponse
+
+    @POST("api/analytics/telemetry")
+    suspend fun sendTelemetry(
+        @Header("Authorization") token: String,
+        @Body req: DeviceTelemetryRequest
+    ): TelemetryResponse
 
     @POST("api/scan/url")
     suspend fun scanUrl(
@@ -98,4 +115,5 @@ interface SentinelApiService {
         @Body req: ChatRequest
     ): ChatResponse
 }
+
 

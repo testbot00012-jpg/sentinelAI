@@ -199,6 +199,7 @@ fun SentinelApp() {
                         when (currentScreen) {
                             is Screen.Dashboard -> DashboardScreen(
                                 userEmail = userEmail,
+                                token = token,
                                 onNavigate = { currentScreen = it }
                             )
                             is Screen.Chatbot -> ChatbotScreen(
@@ -231,6 +232,7 @@ fun SentinelApp() {
                                 onBack = { currentScreen = Screen.Dashboard }
                             )
                             is Screen.Optimizer -> OptimizerScreen(
+                                token = token,
                                 onBack = { currentScreen = Screen.Dashboard }
                             )
                             is Screen.PaymentShield -> PaymentShieldScreen(
@@ -621,7 +623,7 @@ fun RegisterScreen(
 }
 
 @Composable
-fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
+fun DashboardScreen(userEmail: String, token: String = "", onNavigate: (Screen) -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     
@@ -651,6 +653,49 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
         val stat = StatFs(path.path)
         val used = stat.blockCountLong - stat.availableBlocksLong
         ((used.toDouble() / stat.blockCountLong.toDouble()) * 100).toInt()
+    }
+
+    // Dynamic metrics from Cloud Database
+    var totalScans by remember { mutableStateOf<Int?>(null) }
+    var threatsBlocked by remember { mutableStateOf<Int?>(null) }
+    var integrityScore by remember { mutableStateOf(98) }
+
+    // Sync device hardware telemetry to backend (Battery, RAM, Storage)
+    LaunchedEffect(token, batteryPercent, ramPercent, storagePercent) {
+        if (token.isNotBlank()) {
+            try {
+                com.senthil.AI.data.SentinelApiClient.instance.sendTelemetry(
+                    token = token,
+                    req = com.senthil.AI.data.DeviceTelemetryRequest(
+                        device_model = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+                        os_version = "Android ${Build.VERSION.RELEASE}",
+                        security_score = 98,
+                        battery_health = batteryPercent,
+                        ram_usage_percent = ramPercent.toDouble(),
+                        storage_usage_percent = storagePercent.toDouble()
+                    )
+                )
+            } catch (e: Exception) {
+                // Background telemetry sync fail-safe
+            }
+        }
+    }
+
+    // Real-time synchronization polling (Total Scans & Threats Blocked)
+    LaunchedEffect(token) {
+        while (true) {
+            if (token.isNotBlank()) {
+                try {
+                    val metricsRes = com.senthil.AI.data.SentinelApiClient.instance.getMetrics(token)
+                    totalScans = metricsRes.summary.total_scans
+                    threatsBlocked = metricsRes.summary.threats_blocked
+                    integrityScore = metricsRes.summary.security_score
+                } catch (e: Exception) {
+                    // Background sync fail-safe
+                }
+            }
+            delay(3500)
+        }
     }
 
     Column(
@@ -768,7 +813,7 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            Text("98%", color = CyberSuccess, fontSize = 48.sp, fontWeight = FontWeight.Black)
+                            Text("${integrityScore}%", color = CyberSuccess, fontSize = 48.sp, fontWeight = FontWeight.Black)
                             Icon(
                                 imageVector = Icons.Default.OfflineBolt,
                                 contentDescription = "Shield",
@@ -778,7 +823,36 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                                     .padding(bottom = 6.dp)
                             )
                         }
-                        Text("No critical risk patterns found during last scan cycle.", color = Color.LightGray, fontSize = 12.sp)
+                        Text("Active real-time cybersecurity shield with cloud sync.", color = Color.LightGray, fontSize = 12.sp)
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Real-time Cloud Metrics Synced with Web Console
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("TOTAL SCANS", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text("${totalScans ?: 0}", color = CyberPrimary, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.12f)))
+                            Column {
+                                Text("THREATS BLOCKED", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text("${threatsBlocked ?: 0}", color = CyberDanger, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.12f)))
+                            Column {
+                                Text("CLOUD SYNC", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text("LIVE", color = CyberSuccess, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
+                            }
+                        }
                     }
                 }
 
@@ -2303,6 +2377,23 @@ fun ProfileScreen(
         String.format("%.2f GB Free / %.2f GB Total", availGb, totalGb)
     }
 
+    var totalScans by remember { mutableStateOf<Int?>(null) }
+    var threatsBlocked by remember { mutableStateOf<Int?>(null) }
+    var cloudSyncScore by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(token) {
+        if (token.isNotBlank()) {
+            try {
+                val res = com.senthil.AI.data.SentinelApiClient.instance.getMetrics(token)
+                totalScans = res.summary.total_scans
+                threatsBlocked = res.summary.threats_blocked
+                cloudSyncScore = res.summary.security_score
+            } catch (e: Exception) {
+                // background sync fail-safe
+            }
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -2366,7 +2457,40 @@ fun ProfileScreen(
         }
 
         item {
-            Text("DEVICE SPECIFICATIONS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            Text("LIVE CLOUD SECURITY STATISTICS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        }
+
+        // Live Cloud Security Statistics Card
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CyberCard)
+                    .border(1.dp, CyberPrimary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("TOTAL SCANS", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("${totalScans ?: 0}", color = CyberPrimary, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                }
+                Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color.White.copy(alpha = 0.1f)))
+                Column {
+                    Text("THREATS BLOCKED", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("${threatsBlocked ?: 0}", color = CyberDanger, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                }
+                Box(modifier = Modifier.width(1.dp).height(32.dp).background(Color.White.copy(alpha = 0.1f)))
+                Column {
+                    Text("SECURITY SCORE", color = Color.Gray, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("${cloudSyncScore ?: 98}%", color = CyberSuccess, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                }
+            }
+        }
+
+        item {
+            Text("DEVICE HARDWARE SPECIFICATIONS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
         }
 
         // Hardware parameters details
@@ -2509,7 +2633,7 @@ fun DynamicSystemScanResultScreen(onBack: () -> Unit) {
 // MOBILE OPTIMIZATION SUITE
 // ==========================================
 @Composable
-fun OptimizerScreen(onBack: () -> Unit) {
+fun OptimizerScreen(token: String = "", onBack: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     BackHandler { onBack() }

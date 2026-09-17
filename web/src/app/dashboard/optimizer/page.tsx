@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Cpu, Zap, Trash2, BatteryCharging, Shield, Activity, 
   CheckCircle2, RefreshCw, AlertTriangle, Flame, HardDrive, Terminal
 } from 'lucide-react';
+import { useAuthStore } from '@/lib/store';
+import { apiUrl } from '@/lib/api';
 
 export default function OptimizerPage() {
+  const { token } = useAuthStore();
+  const [deviceModel, setDeviceModel] = useState<string>('Connecting Device...');
+
   // RAM States
-  const [ramUsed, setRamUsed] = useState(68); // 68%
+  const [ramUsed, setRamUsed] = useState(54); // %
   const [isBoostingRam, setIsBoostingRam] = useState(false);
   const [ramBoostLog, setRamBoostLog] = useState<string[]>([]);
   const [ramFreedMb, setRamFreedMb] = useState<number | null>(null);
@@ -20,12 +25,37 @@ export default function OptimizerPage() {
   const [junkFreedMb, setJunkFreedMb] = useState<number | null>(null);
 
   // Battery States
-  const [batteryLevel] = useState(82);
-  const [batteryTemp, setBatteryTemp] = useState(33.5);
+  const [batteryLevel, setBatteryLevel] = useState(82);
+  const [batteryTemp, setBatteryTemp] = useState(31.4);
   const [batteryVoltage] = useState(4050);
   const [selectedPowerMode, setSelectedPowerMode] = useState<number>(0);
   const [isCooling, setIsCooling] = useState(false);
   const [cooldownSuccess, setCooldownSuccess] = useState(false);
+
+  useEffect(() => {
+    fetchLiveDeviceHealth();
+    const interval = setInterval(fetchLiveDeviceHealth, 3500);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  const fetchLiveDeviceHealth = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/analytics/metrics'), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const health = data?.summary?.device_health;
+        if (health) {
+          if (health.model) setDeviceModel(health.model);
+          if (health.ram != null && !isBoostingRam) setRamUsed(Math.round(health.ram));
+          if (health.battery != null) setBatteryLevel(Math.round(health.battery));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const handleBoostRam = () => {
     setIsBoostingRam(true);

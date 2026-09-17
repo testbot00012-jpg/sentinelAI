@@ -69,3 +69,35 @@ body {
 .scanner-line {
   animation: cyber-scanner-line 2.5s infinite linear;
 }
+
+/* High-Contrast Inputs & Chrome Autofill Fix */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  background-color: #0b1329 !important;
+  color: #ffffff !important;
+  caret-color: #00e5ff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+/* Chrome / Safari / Edge Autofill Fix: prevents browser from turning inputs white */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #0b1329 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #00e5ff !important;
+  border-color: #00e5ff !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+

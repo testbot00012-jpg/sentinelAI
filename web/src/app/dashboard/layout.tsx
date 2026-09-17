@@ -16,7 +16,6 @@ const NAV_ITEMS = [
   { href: '/dashboard/scanner', label: 'URL Scanner', icon: Globe },
   { href: '/dashboard/sms', label: 'SMS Analyzer', icon: MessageSquare },
   { href: '/dashboard/payment-shield', label: 'Payment Shield', icon: CreditCard },
-  { href: '/dashboard/auditor', label: 'App Auditor', icon: Package },
   { href: '/dashboard/optimizer', label: 'Device Optimizer', icon: Zap },
   { href: '/dashboard/profile', label: 'Agent Profile', icon: User },
 ];

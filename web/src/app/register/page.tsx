@@ -168,14 +168,14 @@ export default function RegisterPage() {
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
             <div className="relative">
-              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary" />
               <input
                 type="text"
                 required
                 value={formData.fullName}
                 onChange={e => setFormData({ ...formData, fullName: e.target.value })}
                 placeholder="Your full name"
-                className="w-full bg-white/3 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 transition-colors placeholder:text-gray-600"
+                className="w-full bg-[#0b1329] border border-cyan-500/30 rounded-xl pl-11 pr-4 py-3 text-sm text-white font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-gray-500 shadow-inner"
               />
             </div>
           </div>
@@ -184,14 +184,14 @@ export default function RegisterPage() {
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
             <div className="relative">
-              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary" />
               <input
                 type="email"
                 required
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
                 placeholder="agent@sentinel.ai"
-                className="w-full bg-white/3 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 font-mono transition-colors placeholder:text-gray-600"
+                className="w-full bg-[#0b1329] border border-cyan-500/30 rounded-xl pl-11 pr-4 py-3 text-sm text-white font-bold font-mono focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-gray-500 shadow-inner"
               />
             </div>
           </div>
@@ -200,19 +200,19 @@ export default function RegisterPage() {
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Password</label>
             <div className="relative">
-              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={formData.password}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
                 placeholder="Min 6 characters"
-                className="w-full bg-white/3 border border-white/10 rounded-xl pl-11 pr-12 py-3 text-sm text-gray-200 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 font-mono transition-colors placeholder:text-gray-600"
+                className="w-full bg-[#0b1329] border border-cyan-500/30 rounded-xl pl-11 pr-12 py-3 text-sm text-white font-bold font-mono focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-gray-500 shadow-inner tracking-wider"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors p-1"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>

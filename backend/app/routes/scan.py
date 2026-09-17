@@ -18,17 +18,22 @@ async def scan_url(req: URLScanRequest, authorization: Optional[str] = Header(No
     result = ml_engine.analyze_url(req.url)
     
     user_id = None
+    user_email = None
     if authorization and authorization.startswith("Bearer "):
         try:
             token = authorization.split(" ")[1]
             claims = verify_firebase_token(token)
-            user_id = str(claims.get("uid", f"user_{claims.get('email')}"))
-        except Exception:
-            pass
+            user_id = str(claims.get("uid", ""))
+            user_email = claims.get("email", "")
+            if not user_id and user_email:
+                user_id = f"user_{user_email}"
+        except Exception as e:
+            print(f"[Warning] scan_url token decode skipped: {e}")
 
     # Save to scan history if authenticated
     db_scan = {
         "user_id": user_id or "anonymous",
+        "user_email": user_email or "",
         "url": result["url"],
         "status": result["status"],
         "score": result["score"],
@@ -41,6 +46,7 @@ async def scan_url(req: URLScanRequest, authorization: Optional[str] = Header(No
             if result["status"] in ["Suspicious", "Phishing"]:
                 threat = {
                     "user_id": user_id,
+                    "user_email": user_email or "",
                     "threat_type": "Phishing URL",
                     "severity": "Medium" if result["status"] == "Suspicious" else "High",
                     "source": "Web Scanner",
@@ -66,17 +72,22 @@ async def scan_fraud(req: FraudScanRequest, authorization: Optional[str] = Heade
     result = ml_engine.analyze_sms_or_email(req.content)
     
     user_id = None
+    user_email = None
     if authorization and authorization.startswith("Bearer "):
         try:
             token = authorization.split(" ")[1]
             claims = verify_firebase_token(token)
-            user_id = str(claims.get("uid", f"user_{claims.get('email')}"))
-        except Exception:
-            pass
+            user_id = str(claims.get("uid", ""))
+            user_email = claims.get("email", "")
+            if not user_id and user_email:
+                user_id = f"user_{user_email}"
+        except Exception as e:
+            print(f"[Warning] scan_fraud token decode skipped: {e}")
 
     # Save to history
     db_scan = {
         "user_id": user_id or "anonymous",
+        "user_email": user_email or "",
         "scan_type": req.scan_type,
         "content": req.content,
         "scam_probability": result["scam_probability"],
@@ -90,6 +101,7 @@ async def scan_fraud(req: FraudScanRequest, authorization: Optional[str] = Heade
             if result["scam_probability"] >= 65:
                 threat = {
                     "user_id": user_id,
+                    "user_email": user_email or "",
                     "threat_type": "Scam Message" if req.scan_type == "SMS" else "Email Phishing",
                     "severity": "High",
                     "source": "Mobile Agent" if req.scan_type == "SMS" else "Web Scanner",

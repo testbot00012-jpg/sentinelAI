@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User, Shield, Mail, Lock, CheckCircle2, Edit3, Save, X,
   Activity, AlertOctagon, Terminal, Clock, Zap, Award,
@@ -10,10 +10,12 @@ import { useAuthStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
 import { auth as firebaseAuth } from '@/lib/firebase';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { apiUrl } from '@/lib/api';
 
 export default function ProfilePage() {
   const router = useRouter();
   const { user, logout, token } = useAuthStore();
+  const [metrics, setMetrics] = useState<any>(null);
   const [editMode, setEditMode] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [passSection, setPassSection] = useState(false);
@@ -31,10 +33,34 @@ export default function ProfilePage() {
   const agentName = user?.email?.split('@')[0] || 'Agent';
   const joinDate = 'May 2026';
 
+  useEffect(() => {
+    fetchProfileMetrics();
+    const interval = setInterval(fetchProfileMetrics, 3000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  const fetchProfileMetrics = async () => {
+    try {
+      const res = await fetch(apiUrl('/api/analytics/metrics'), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMetrics(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const totalScans = metrics?.summary?.total_scans ?? 0;
+  const threatsBlocked = metrics?.summary?.threats_blocked ?? 0;
+  const securityScore = metrics?.summary?.security_score ?? 98;
+
   const stats = [
-    { label: 'Total Scans', value: '1,482', icon: Terminal, color: 'text-primary' },
-    { label: 'Threats Blocked', value: '127', icon: AlertOctagon, color: 'text-danger' },
-    { label: 'Security Score', value: '96%', icon: Shield, color: 'text-success' },
+    { label: 'Total Scans', value: totalScans.toLocaleString(), icon: Terminal, color: 'text-primary' },
+    { label: 'Threats Blocked', value: threatsBlocked.toLocaleString(), icon: AlertOctagon, color: 'text-danger' },
+    { label: 'Security Score', value: `${securityScore}%`, icon: Shield, color: 'text-success' },
     { label: 'Days Active', value: '14', icon: Clock, color: 'text-secondary' },
   ];
 
@@ -135,7 +161,7 @@ export default function ProfilePage() {
               {[
                 { name: 'URL Classifier', status: 'Online', health: 98, color: 'text-primary' },
                 { name: 'NLP SMS Engine', status: 'Online', health: 94, color: 'text-secondary' },
-                { name: 'APK Risk Auditor', status: 'Online', health: 87, color: 'text-success' },
+                { name: 'UPI Payment Shield', status: 'Online', health: 96, color: 'text-success' },
                 { name: 'IP Reputation DB', status: 'Syncing', health: 72, color: 'text-warning' },
               ].map((engine) => (
                 <div key={engine.name}>
