@@ -14,6 +14,14 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'https://sentinel-backend-production-16ff.up.railway.app/api/:path*',
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

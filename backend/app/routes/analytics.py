@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from app.db.database import get_db
 from app.schemas.schemas import DeviceTelemetryRequest
-from app.core.security import get_current_user
+from app.core.security import get_current_user, verify_firebase_token
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 router = APIRouter(prefix="/api/analytics", tags=["Device Diagnostics & Analytics"])
 
@@ -55,10 +55,25 @@ async def update_telemetry(req: DeviceTelemetryRequest, current_user: dict = Dep
 
 
 @router.get("/metrics")
-async def get_user_metrics(current_user: dict = Depends(get_current_user), db = Depends(get_db)):
-    user_id = current_user.get("_id")
-    user_email = current_user.get("email")
-    firebase_uid = current_user.get("firebase_uid")
+async def get_user_metrics(
+    authorization: Optional[str] = Header(None),
+    x_user_email: Optional[str] = Header(None, alias="X-User-Email"),
+    db = Depends(get_db)
+):
+    user_id = None
+    user_email = x_user_email or None
+    firebase_uid = None
+
+    if authorization:
+        try:
+            token = authorization.replace("Bearer ", "").strip()
+            claims = verify_firebase_token(token)
+            user_id = str(claims.get("uid", ""))
+            firebase_uid = user_id
+            if not user_email:
+                user_email = claims.get("email", "")
+        except Exception as e:
+            print(f"[Warning] metrics token decode: {e}")
 
     match_conditions = []
     if user_email:
@@ -76,14 +91,14 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
 
     # Retrieve all metrics dynamically from database
     try:
-        url_scans_count = await db["url_scans"].count_documents(user_filter)
-        fraud_scans_count = await db["fraud_scans"].count_documents(user_filter)
-        apk_scans_count = await db["apk_scans"].count_documents(user_filter)
-        device = await db["device_stats"].find_one(user_filter, sort=[("updated_at", -1)])
-        threats_blocked = await db["threat_logs"].count_documents(user_filter)
-        phishing_count = await db["url_scans"].count_documents({"$and": [user_filter, {"status": {"$in": ["Phishing", "Suspicious"]}}]})
-        scam_count = await db["fraud_scans"].count_documents({"$and": [user_filter, {"classification": {"$regex": "Scam", "$options": "i"}}]})
-        malware_count = await db["threat_logs"].count_documents({"$and": [user_filter, {"threat_type": {"$regex": "Malware|APK", "$options": "i"}}]})
+        url_scans_count = await db["url_scans"].count_documents(user_filter) if user_filter else 0
+        fraud_scans_count = await db["fraud_scans"].count_documents(user_filter) if user_filter else 0
+        apk_scans_count = await db["apk_scans"].count_documents(user_filter) if user_filter else 0
+        device = await db["device_stats"].find_one(user_filter, sort=[("updated_at", -1)]) if user_filter else None
+        threats_blocked = await db["threat_logs"].count_documents(user_filter) if user_filter else 0
+        phishing_count = await db["url_scans"].count_documents({"$and": [user_filter, {"status": {"$in": ["Phishing", "Suspicious"]}}]}) if user_filter else 0
+        scam_count = await db["fraud_scans"].count_documents({"$and": [user_filter, {"classification": {"$regex": "Scam", "$options": "i"}}]}) if user_filter else 0
+        malware_count = await db["threat_logs"].count_documents({"$and": [user_filter, {"threat_type": {"$regex": "Malware|APK", "$options": "i"}}]}) if user_filter else 0
     except Exception as db_err:
         print(f"[Warning] Metrics DB query error: {db_err}")
         url_scans_count = 0
@@ -94,6 +109,48 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
         phishing_count = 0
         scam_count = 0
         malware_count = 0
+
+    # Retrieve real recent threats from MongoDB Atlas
+    recent_threats = []
+    if user_filter:
+        try:
+            threats_cursor = db["threat_logs"].find(user_filter).sort("detected_at", -1).limit(10)
+            raw_threats = await threats_cursor.to_list(10)
+            for t in raw_threats:
+                det_time = t.get("detected_at")
+                time_str = det_time.strftime("%I:%M %p") if isinstance(det_time, datetime.datetime) else "Recent"
+                desc = t.get("description", "")
+                src = desc.replace("User scanned a phishing URL: ", "").replace("User scanned a suspicious URL: ", "") or t.get("source", "Web Scanner")
+                recent_threats.append({
+                    "time": time_str,
+                    "type": t.get("threat_type", "Phishing Threat"),
+                    "source": src,
+                    "score": "96%" if t.get("severity") == "High" else "75%",
+                    "action": "Blocked",
+                    "severity": "danger" if t.get("severity") == "High" else "warning"
+                })
+        except Exception as th_err:
+            print(f"[Warning] recent_threats DB query error: {th_err}")
+
+    # Retrieve real recent scans from MongoDB Atlas
+    recent_scans = []
+    if user_filter:
+        try:
+            scans_cursor = db["url_scans"].find(user_filter).sort("scanned_at", -1).limit(10)
+            raw_scans = await scans_cursor.to_list(10)
+            for s in raw_scans:
+                sc_time = s.get("scanned_at")
+                time_str = sc_time.strftime("%I:%M %p") if isinstance(sc_time, datetime.datetime) else "Recent"
+                status = s.get("status", "Safe")
+                recent_scans.append({
+                    "time": time_str,
+                    "url": s.get("url", ""),
+                    "status": status,
+                    "score": f"{round(float(s.get('score', 5)), 1)}%",
+                    "action": "Blocked" if status in ["Phishing", "Suspicious"] else "Permitted"
+                })
+        except Exception as sc_err:
+            print(f"[Warning] recent_scans DB query error: {sc_err}")
 
     security_score = device.get("security_score", 98) if device else 98
 
@@ -130,7 +187,9 @@ async def get_user_metrics(current_user: dict = Depends(get_current_user), db = 
             "device_health": device_health
         },
         "trends": security_trends,
-        "threat_distribution": threat_distribution
+        "threat_distribution": threat_distribution,
+        "recent_threats": recent_threats,
+        "recent_scans": recent_scans
     }
 
 

@@ -105,10 +105,16 @@ export default function SMSAnalyzerPage() {
       };
       setResult(smsResult);
       setHistory(prev => [smsResult, ...prev.slice(0, 7)]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('sentinel_scan_completed'));
+      }
     } catch {
       const smsResult = analyzeLocally(text.trim());
       setResult(smsResult);
       setHistory(prev => [smsResult, ...prev.slice(0, 7)]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('sentinel_scan_completed'));
+      }
     } finally {
       setLoading(false);
     }

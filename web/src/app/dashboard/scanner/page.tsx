@@ -62,6 +62,9 @@ export default function URLScannerPage() {
       };
       setResult(scanResult);
       setHistory(prev => [scanResult, ...prev.slice(0, 9)]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('sentinel_scan_completed'));
+      }
     } catch {
       // Intelligent offline fallback
       const lower = normalizedUrl.toLowerCase();

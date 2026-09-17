@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Shield, LayoutDashboard, Globe, MessageSquare, Package,
-  User, LogOut, Menu, X, ChevronRight, Zap, Bell, Settings,
+  User, LogOut, Menu, X, ChevronRight, Zap, Settings,
   Bot, CreditCard, Cpu
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
@@ -16,7 +16,6 @@ const NAV_ITEMS = [
   { href: '/dashboard/scanner', label: 'URL Scanner', icon: Globe },
   { href: '/dashboard/sms', label: 'SMS Analyzer', icon: MessageSquare },
   { href: '/dashboard/payment-shield', label: 'Payment Shield', icon: CreditCard },
-  { href: '/dashboard/optimizer', label: 'Device Optimizer', icon: Zap },
   { href: '/dashboard/profile', label: 'Agent Profile', icon: User },
 ];
 
@@ -25,7 +24,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [notifications] = useState(3);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -176,15 +174,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Zap className="w-3.5 h-3.5 text-success" />
               <span className="text-xs font-bold text-success">Systems Nominal</span>
             </div>
-            {/* Notifications */}
-            <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
-              <Bell className="w-5 h-5" />
-              {notifications > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-danger text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                  {notifications}
-                </span>
-              )}
-            </button>
           </div>
         </header>
 
