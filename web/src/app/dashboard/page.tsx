@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Shield, Terminal, Cpu, AlertOctagon, Activity, 
   CheckCircle2, RefreshCw, BarChart2, Zap, TrendingUp,
-  Lock, Globe, MessageSquare, Package
+  Lock, Globe, MessageSquare, Package, Bot, CreditCard, Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { apiUrl } from '@/lib/api';
@@ -65,10 +65,12 @@ export default function Dashboard() {
   };
 
   const quickActions = [
-    { label: 'Scan URL', icon: Globe, href: '/dashboard/scanner', color: 'text-primary', bg: 'bg-primary/10 border-primary/20 hover:border-primary/50' },
+    { label: 'AI Intel Chat', icon: Bot, href: '/dashboard/chat', color: 'text-primary', bg: 'bg-primary/10 border-primary/20 hover:border-primary/50' },
+    { label: 'Scan URL', icon: Globe, href: '/dashboard/scanner', color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20 hover:border-cyan-500/50' },
     { label: 'Analyze SMS', icon: MessageSquare, href: '/dashboard/sms', color: 'text-secondary', bg: 'bg-secondary/10 border-secondary/20 hover:border-secondary/50' },
-    { label: 'App Audit', icon: Package, href: '/dashboard/auditor', color: 'text-success', bg: 'bg-success/10 border-success/20 hover:border-success/50' },
-    { label: 'My Profile', icon: Activity, href: '/dashboard/profile', color: 'text-warning', bg: 'bg-warning/10 border-warning/20 hover:border-warning/50' },
+    { label: 'Payment Shield', icon: CreditCard, href: '/dashboard/payment-shield', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20 hover:border-emerald-500/50' },
+    { label: 'App Auditor', icon: Package, href: '/dashboard/auditor', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20 hover:border-amber-500/50' },
+    { label: 'Device Optimizer', icon: Zap, href: '/dashboard/optimizer', color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20 hover:border-rose-500/50' },
   ];
 
   const recentThreats = [
@@ -104,6 +106,49 @@ export default function Dashboard() {
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
           <span className="text-sm font-bold text-success">All Systems Active</span>
+        </div>
+      </div>
+
+      {/* Groq AI Security Assistant Hero Banner */}
+      <div className="glass-panel rounded-2xl p-5 border-primary/20 bg-gradient-to-r from-primary/10 via-secondary/5 to-transparent flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-primary/20 border border-primary/40 flex items-center justify-center shrink-0">
+            <Bot className="w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-white text-base">Sentinel AI Intelligence Assistant</h3>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-secondary/20 text-secondary border border-secondary/30">
+                Groq Llama-3.3 70B
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Ask questions about suspicious UPI requests, phishing SMS, malicious APKs, or system performance.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/chat"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-black font-bold text-xs hover:bg-primary/90 transition-all shrink-0 shadow-[0_0_15px_rgba(0,229,255,0.3)]"
+        >
+          <Sparkles className="w-4 h-4" /> Launch AI Chat
+        </Link>
+      </div>
+
+      {/* Quick Actions */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Security & Utility Modules</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {quickActions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className={`glass-panel p-3.5 rounded-xl border ${action.bg} flex flex-col sm:flex-row items-center gap-2.5 transition-all duration-200 group text-center sm:text-left`}
+            >
+              <action.icon className={`w-5 h-5 ${action.color} group-hover:scale-110 transition-transform shrink-0`} />
+              <span className="text-xs font-semibold text-white truncate">{action.label}</span>
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -160,21 +205,34 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div>
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {quickActions.map((action) => (
-            <Link
-              key={action.href}
-              href={action.href}
-              className={`glass-panel p-4 rounded-xl border ${action.bg} flex items-center gap-3 transition-all duration-200 group`}
-            >
-              <action.icon className={`w-5 h-5 ${action.color} group-hover:scale-110 transition-transform`} />
-              <span className="text-sm font-semibold text-white">{action.label}</span>
-            </Link>
-          ))}
+      {/* Device Optimization & Health Status Banner */}
+      <div className="glass-panel p-5 rounded-2xl border-white/5 bg-gradient-to-r from-rose-500/5 via-amber-500/5 to-transparent flex flex-col md:flex-row items-center justify-between gap-5">
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="w-12 h-12 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+            <Zap className="w-6 h-6 text-rose-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-white text-sm">Device Resource & Thermal Status</h4>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                Balanced Mode
+              </span>
+            </div>
+            <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 font-mono">
+              <span>RAM: <strong className="text-white">38% Used</strong></span>
+              <span>•</span>
+              <span>Storage: <strong className="text-white">64% Full</strong></span>
+              <span>•</span>
+              <span>Battery: <strong className="text-emerald-400">82% (31.4°C)</strong></span>
+            </div>
+          </div>
         </div>
+        <Link
+          href="/dashboard/optimizer"
+          className="w-full md:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white font-bold text-xs hover:opacity-95 transition-all shadow-[0_0_15px_rgba(244,63,94,0.3)] shrink-0"
+        >
+          <Zap className="w-4 h-4 fill-white" /> 1-Tap Optimize Device
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

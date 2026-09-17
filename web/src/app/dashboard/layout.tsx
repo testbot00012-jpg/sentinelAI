@@ -5,15 +5,19 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Shield, LayoutDashboard, Globe, MessageSquare, Package,
-  User, LogOut, Menu, X, ChevronRight, Zap, Bell, Settings
+  User, LogOut, Menu, X, ChevronRight, Zap, Bell, Settings,
+  Bot, CreditCard, Cpu
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/dashboard/chat', label: 'AI Security Intel', icon: Bot },
   { href: '/dashboard/scanner', label: 'URL Scanner', icon: Globe },
   { href: '/dashboard/sms', label: 'SMS Analyzer', icon: MessageSquare },
+  { href: '/dashboard/payment-shield', label: 'Payment Shield', icon: CreditCard },
   { href: '/dashboard/auditor', label: 'App Auditor', icon: Package },
+  { href: '/dashboard/optimizer', label: 'Device Optimizer', icon: Zap },
   { href: '/dashboard/profile', label: 'Agent Profile', icon: User },
 ];
 
