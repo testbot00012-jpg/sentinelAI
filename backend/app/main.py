@@ -35,3 +35,9 @@ def read_root():
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "database": "connected"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"[Sentinel AI] Starting Uvicorn on port {port}...")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
