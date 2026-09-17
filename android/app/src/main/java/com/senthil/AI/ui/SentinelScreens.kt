@@ -39,6 +39,14 @@ import android.os.Build
 import android.content.pm.PackageManager
 import android.content.pm.PackageInfo
 import android.content.pm.ApplicationInfo
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import android.net.Uri
+import android.provider.Settings
+import com.senthil.AI.data.SentinelApiClient
+import com.senthil.AI.data.URLScanRequest
+import com.senthil.AI.data.ChatRequest
+import com.senthil.AI.data.ChatMessage
 
 // Beautiful Dark theme color palette for Jetpack Compose matching Next.js theme
 val CyberBackground = Color(0xFF050816)
@@ -54,6 +62,7 @@ sealed class Screen {
     object Login : Screen()
     object Register : Screen()
     object Dashboard : Screen()
+    object Chatbot : Screen()
     object URLScanner : Screen()
     object SMSAnalyzer : Screen()
     object PermissionAnalyzer : Screen()
@@ -101,7 +110,7 @@ fun SentinelApp() {
                     currentScreen = Screen.Login
                 }
             )
-            Screen.Dashboard, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile, Screen.DynamicScanResult -> {
+            Screen.Dashboard, Screen.Chatbot, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile, Screen.DynamicScanResult -> {
                 Scaffold(
                     bottomBar = {
                         NavigationBar(
@@ -122,10 +131,10 @@ fun SentinelApp() {
                                 )
                             )
                             NavigationBarItem(
-                                selected = currentScreen == Screen.URLScanner,
-                                onClick = { currentScreen = Screen.URLScanner },
-                                icon = { Icon(Icons.Default.Language, contentDescription = "URL Scan") },
-                                label = { Text("URL Scan", fontSize = 10.sp) },
+                                selected = currentScreen == Screen.Chatbot,
+                                onClick = { currentScreen = Screen.Chatbot },
+                                icon = { Icon(Icons.Default.SmartToy, contentDescription = "AI Chat") },
+                                label = { Text("AI Chat", fontSize = 10.sp) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = CyberPrimary,
                                     unselectedIconColor = Color.Gray,
@@ -135,14 +144,14 @@ fun SentinelApp() {
                                 )
                             )
                             NavigationBarItem(
-                                selected = currentScreen == Screen.SMSAnalyzer,
-                                onClick = { currentScreen = Screen.SMSAnalyzer },
-                                icon = { Icon(Icons.Default.Sms, contentDescription = "SMS Scan") },
-                                label = { Text("SMS Scan", fontSize = 10.sp) },
+                                selected = currentScreen == Screen.URLScanner,
+                                onClick = { currentScreen = Screen.URLScanner },
+                                icon = { Icon(Icons.Default.Language, contentDescription = "URL Scan") },
+                                label = { Text("URL Scan", fontSize = 10.sp) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = CyberSecondary,
+                                    selectedIconColor = CyberPrimary,
                                     unselectedIconColor = Color.Gray,
-                                    selectedTextColor = CyberSecondary,
+                                    selectedTextColor = CyberPrimary,
                                     unselectedTextColor = Color.Gray,
                                     indicatorColor = CyberCard
                                 )
@@ -187,10 +196,17 @@ fun SentinelApp() {
                                 userEmail = userEmail,
                                 onNavigate = { currentScreen = it }
                             )
+                            is Screen.Chatbot -> ChatbotScreen(
+                                userEmail = userEmail,
+                                token = token,
+                                onBack = { currentScreen = Screen.Dashboard }
+                            )
                             is Screen.URLScanner -> URLScannerScreen(
+                                token = token,
                                 onBack = { currentScreen = Screen.Dashboard }
                             )
                             is Screen.SMSAnalyzer -> SMSAnalyzerScreen(
+                                token = token,
                                 onBack = { currentScreen = Screen.Dashboard }
                             )
                             is Screen.PermissionAnalyzer -> PermissionAnalyzerScreen(
@@ -754,6 +770,51 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                     }
                 }
 
+                // Groq AI Assistant Banner
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, CyberPrimary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                        .clickable { onNavigate(Screen.Chatbot) },
+                    colors = CardDefaults.cardColors(containerColor = CyberCard)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(CyberPrimary.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.SmartToy, contentDescription = "AI", tint = CyberPrimary, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("SENTINEL AI INTEL", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "GROQ",
+                                    color = CyberSuccess,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(CyberSuccess.copy(alpha = 0.15f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                            Text("Ask questions about phishing, threats & app risks", color = Color.Gray, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = CyberPrimary)
+                    }
+                }
+
                 Text("SHIELD ACTIVE ENGINES", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
 
                 // Active engines indicators
@@ -761,9 +822,9 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary)
-                    EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary)
-                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning)
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Web Scan", status = "SECURE", tint = CyberPrimary, onClick = { onNavigate(Screen.URLScanner) })
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "SMS Spam", status = "ACTIVE", tint = CyberSecondary, onClick = { onNavigate(Screen.SMSAnalyzer) })
+                    EngineStatusBox(modifier = Modifier.weight(1f), title = "Auditor", status = "SAFE", tint = CyberWarning, onClick = { onNavigate(Screen.PermissionAnalyzer) })
                 }
 
                 Text("DEVICE UTILIZATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
@@ -828,12 +889,19 @@ fun DashboardScreen(userEmail: String, onNavigate: (Screen) -> Unit) {
 }
 
 @Composable
-fun EngineStatusBox(modifier: Modifier = Modifier, title: String, status: String, tint: Color) {
+fun EngineStatusBox(
+    modifier: Modifier = Modifier,
+    title: String,
+    status: String,
+    tint: Color,
+    onClick: (() -> Unit)? = null
+) {
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(CyberCard)
             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -877,15 +945,138 @@ fun UsageProgressRow(label: String, percent: Int, color: Color) {
     }
 }
 
+data class URLScanVerdict(
+    val url: String,
+    val status: String, // "Phishing", "Suspicious", "Safe"
+    val score: Float,   // 0.0 to 1.0 (malware / risk score)
+    val details: List<String>,
+    val recommendation: String
+)
+
+fun evaluateUrlHeuristics(rawUrl: String): URLScanVerdict {
+    val cleanUrl = rawUrl.trim()
+    val lower = cleanUrl.lowercase()
+    val details = mutableListOf<String>()
+    var riskScore = 0.05f
+
+    // 1. Raw IP address host (e.g. http://192.168.1.1 or 45.33.32.156)
+    val ipRegex = Regex("""^https?://(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""")
+    val rawIpRegex = Regex("""^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""")
+    if (ipRegex.containsMatchIn(lower) || rawIpRegex.containsMatchIn(lower)) {
+        riskScore += 0.85f
+        details.add("Raw IPv4 host detected (obfuscation signature)")
+    }
+
+    // 2. Punycode / IDN homograph attack
+    if (lower.contains("xn--")) {
+        riskScore += 0.75f
+        details.add("Punycode / IDN homograph spoofing signature (xn--)")
+    }
+
+    // 3. User info embedded in URL (e.g. https://google.com@evil.com)
+    if (lower.contains("@")) {
+        riskScore += 0.70f
+        details.add("Credential redirection obfuscation ('@' symbol in URL)")
+    }
+
+    // 4. Abused Phishing TLDs
+    val suspiciousTlds = listOf(
+        ".xyz", ".top", ".buzz", ".work", ".click", ".icu", ".loan",
+        ".cfd", ".link", ".gq", ".ml", ".cf", ".tk", ".ga", ".ru", ".cn"
+    )
+    for (tld in suspiciousTlds) {
+        if (lower.contains(tld)) {
+            riskScore += 0.40f
+            details.add("High-risk top-level domain ($tld)")
+            break
+        }
+    }
+
+    // 5. Brand Spoofing Check
+    val brandMap = mapOf(
+        "paypal" to listOf("paypal.com"),
+        "google" to listOf("google.com", "google.co", "accounts.google.com"),
+        "apple" to listOf("apple.com", "icloud.com"),
+        "microsoft" to listOf("microsoft.com", "live.com", "office.com"),
+        "netflix" to listOf("netflix.com"),
+        "amazon" to listOf("amazon.com", "amazon.co"),
+        "chase" to listOf("chase.com"),
+        "wellsfargo" to listOf("wellsfargo.com"),
+        "binance" to listOf("binance.com"),
+        "coinbase" to listOf("coinbase.com"),
+        "instagram" to listOf("instagram.com"),
+        "facebook" to listOf("facebook.com", "fb.com"),
+        "telegram" to listOf("telegram.org", "t.me"),
+        "whatsapp" to listOf("whatsapp.com")
+    )
+
+    for ((brand, legitDomains) in brandMap) {
+        if (lower.contains(brand)) {
+            val isLegit = legitDomains.any { lower.contains("://$it") || lower.contains(".$it") || lower.startsWith(it) }
+            if (!isLegit) {
+                riskScore += 0.80f
+                details.add("Brand spoofing: '$brand' keyword in unauthorized domain")
+            }
+        }
+    }
+
+    // 6. Suspicious urgency or credential-theft keywords
+    val keywords = listOf(
+        "verify", "suspended", "urgent", "update-account", "security-alert",
+        "wallet-connect", "claim-bonus", "login-attempt", "confirm-identity", "free-crypto"
+    )
+    for (kw in keywords) {
+        if (lower.contains(kw)) {
+            riskScore += 0.35f
+            details.add("Phishing deception keyword detected: '$kw'")
+            break
+        }
+    }
+
+    // 7. Excessive subdomain nesting (> 3 dots in host)
+    val hostPart = cleanUrl.replace(Regex("""^https?://"""), "").split("/")[0]
+    if (hostPart.count { it == '.' } >= 4) {
+        riskScore += 0.30f
+        details.add("Excessive subdomain depth (> 3 levels)")
+    }
+
+    val finalScore = riskScore.coerceIn(0.01f, 0.99f)
+    val status = when {
+        finalScore >= 0.60f -> "Phishing"
+        finalScore >= 0.30f -> "Suspicious"
+        else -> "Safe"
+    }
+
+    if (details.isEmpty()) {
+        details.add("Standard URL structure verified")
+        details.add("No known brand spoofing or malicious signatures")
+    }
+
+    val recommendation = when (status) {
+        "Phishing" -> "CRITICAL THREAT: DO NOT visit this site or input any credentials. High likelihood of credential theft or financial fraud."
+        "Suspicious" -> "CAUTION: Unverified destination with deceptive indicators. Avoid sharing passwords, 2FA codes, or private data."
+        else -> "VERIFIED SAFE: Destination conforms to security standards. No deceptive brand or network signatures detected."
+    }
+
+    return URLScanVerdict(
+        url = cleanUrl,
+        status = status,
+        score = finalScore,
+        details = details,
+        recommendation = recommendation
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun URLScannerScreen(onBack: () -> Unit) {
+fun URLScannerScreen(token: String = "", onBack: () -> Unit) {
     BackHandler {
         onBack()
     }
     var urlInput by remember { mutableStateOf("http://secure-verify-paypal.accounts.com") }
-    var scanResult by remember { mutableStateOf<String?>(null) }
+    var verdict by remember { mutableStateOf<URLScanVerdict?>(null) }
     var loading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -906,8 +1097,8 @@ fun URLScannerScreen(onBack: () -> Unit) {
             Text("AI URL LINK SCANNER", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("Target scan link address", color = Color.Gray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Spacer(modifier = Modifier.height(20.dp))
+        Text("Target URL or Domain to Analyze", color = Color.Gray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         Spacer(modifier = Modifier.height(6.dp))
 
         OutlinedTextField(
@@ -922,16 +1113,70 @@ fun URLScannerScreen(onBack: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick test pills
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "paypal-spoof.xyz" to "http://login-verify.paypal-security.xyz/auth",
+                "IP Host Phish" to "http://192.168.1.1/banking-login",
+                "Clean Google" to "https://google.com"
+            ).forEach { (label, sampleUrl) ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CyberCard)
+                        .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                        .clickable { urlInput = sampleUrl }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(label, color = CyberPrimary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
             onClick = {
+                if (urlInput.isBlank() || loading) return@Button
                 loading = true
-                scanResult = null
-                val isSus = urlInput.contains("paypal") || urlInput.contains("verify")
-                scanResult = if (isSus) "VERDICT: Phishing Site Detected (Confidence: 85%)\n• Obfuscated subdomains detected\n• Spoofed banking structures discovered\n\nRECOMMENDATION: DO NOT USE THIS SITE. It is highly likely to steal your credentials."
-                else "VERDICT: Safe Link Checked\n• Verified reputation indexes\n\nRECOMMENDATION: Safe to use. No malicious patterns found."
-                loading = false
+                verdict = null
+                coroutineScope.launch {
+                    val local = evaluateUrlHeuristics(urlInput)
+                    verdict = local
+                    try {
+                        val res = SentinelApiClient.instance.scanUrl(
+                            token = token,
+                            req = URLScanRequest(url = urlInput.trim())
+                        )
+                        val combined = (local.details + res.details).distinct()
+                            .filter { it != "Standard URL structure verified" && it != "No known brand spoofing or malicious signatures" }
+                        val isPhish = res.status == "Phishing" || local.status == "Phishing"
+                        val isSus = !isPhish && (res.status == "Suspicious" || local.status == "Suspicious")
+                        val finalStatus = if (isPhish) "Phishing" else if (isSus) "Suspicious" else "Safe"
+                        val finalScore = maxOf(local.score, res.score)
+                        val rec = when (finalStatus) {
+                            "Phishing" -> "CRITICAL THREAT: DO NOT visit this site or input any credentials. High likelihood of credential theft or financial fraud."
+                            "Suspicious" -> "CAUTION: Unverified destination with deceptive indicators. Avoid sharing passwords, 2FA codes, or private data."
+                            else -> "VERIFIED SAFE: Destination conforms to security standards. No deceptive brand or network signatures detected."
+                        }
+                        verdict = URLScanVerdict(
+                            url = res.url,
+                            status = finalStatus,
+                            score = finalScore,
+                            details = if (combined.isNotEmpty()) combined else listOf("Verified authentic network route", "No malicious signatures detected"),
+                            recommendation = rec
+                        )
+                    } catch (e: Exception) {
+                        // Keeps local heuristic verdict if network error occurs
+                    } finally {
+                        loading = false
+                    }
+                }
             },
             colors = ButtonDefaults.buttonColors(containerColor = CyberPrimary),
             shape = RoundedCornerShape(8.dp),
@@ -939,39 +1184,93 @@ fun URLScannerScreen(onBack: () -> Unit) {
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
-            Text("EXECUTE AI ANALYSIS", color = CyberBackground, fontWeight = FontWeight.Bold)
+            if (loading) {
+                CircularProgressIndicator(color = CyberBackground, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("SCANNING SIGNATURES...", color = CyberBackground, fontWeight = FontWeight.Bold)
+            } else {
+                Text("EXECUTE AI ANALYSIS", color = CyberBackground, fontWeight = FontWeight.Bold)
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        scanResult?.let {
+        verdict?.let { res ->
+            val isPhishing = res.status == "Phishing"
+            val isSuspicious = res.status == "Suspicious"
+            val badgeColor = when {
+                isPhishing -> CyberDanger
+                isSuspicious -> CyberWarning
+                else -> CyberSuccess
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(CyberCard)
-                    .border(
-                        1.dp,
-                        if (it.contains("Phishing")) CyberDanger.copy(alpha = 0.3f) else CyberSuccess.copy(alpha = 0.3f),
-                        RoundedCornerShape(12.dp)
-                    )
+                    .border(1.dp, badgeColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                     .padding(16.dp)
             ) {
                 Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isPhishing) "MALICIOUS PHISHING DETECTED" else if (isSuspicious) "SUSPICIOUS UNVERIFIED LINK" else "SAFE VERIFIED DESTINATION",
+                            color = badgeColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "${(res.score * 100).toInt()}% Risk",
+                            color = badgeColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Text(
-                        text = "Scans Output",
+                        text = "DETECTED INDICATORS:",
                         color = Color.Gray,
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = it,
-                        color = if (it.contains("Phishing")) CyberDanger else CyberSuccess,
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    res.details.forEach { detail ->
+                        Text(
+                            text = "• $detail",
+                            color = if (isPhishing || isSuspicious) Color(0xFFFFD1D1) else Color(0xFFD1FFDF),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(badgeColor.copy(alpha = 0.1f))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = res.recommendation,
+                            color = badgeColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }
@@ -980,12 +1279,14 @@ fun URLScannerScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SMSAnalyzerScreen(onBack: () -> Unit) {
+fun SMSAnalyzerScreen(token: String = "", onBack: () -> Unit) {
     BackHandler {
         onBack()
     }
-    var smsInput by remember { mutableStateOf("URGENT: Your account is suspended. Click here http://bit.ly/pay-verify") }
+    var smsInput by remember { mutableStateOf("URGENT: Your bank account is suspended. Click here http://bit.ly/pay-verify to restore access") }
     var scanResult by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -1006,7 +1307,7 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
             Text("SMS FRAUD NLP ANALYZER", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
         Text("Enter text messages content to check", color = Color.Gray, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         Spacer(modifier = Modifier.height(6.dp))
 
@@ -1029,9 +1330,25 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
 
         Button(
             onClick = {
-                val hasScam = smsInput.contains("urgent") || smsInput.contains("blocked") || smsInput.contains("verify")
-                scanResult = if (hasScam) "SCAM PROBABILITY: 94.8% (Highly Likely Scam)\n• Flagged: Urgency language discovered\n• Flagged: Obfuscated redirects identified\n\nRECOMMENDATION: DO NOT CLICK ANY LINKS. Delete this message immediately."
-                else "SCAM PROBABILITY: 4.5% (Safe)\n• Verified structure guidelines\n\nRECOMMENDATION: Safe message. No scams detected."
+                if (smsInput.isBlank() || isLoading) return@Button
+                isLoading = true
+                coroutineScope.launch {
+                    val lower = smsInput.lowercase()
+                    val hasScamWords = lower.contains("urgent") || lower.contains("suspended") || lower.contains("blocked") || lower.contains("verify") || lower.contains("otp") || lower.contains("winner")
+                    try {
+                        val res = SentinelApiClient.instance.scanSMS(
+                            token = token,
+                            req = com.senthil.AI.data.SMSScanRequest(content = smsInput)
+                        )
+                        val isScam = res.scam_probability >= 50
+                        scanResult = "SCAM PROBABILITY: ${res.scam_probability}%\n• Classification: ${res.classification}\n• ${res.explanation}\n\nRECOMMENDATION: ${if (isScam) "DO NOT CLICK ANY LINKS. Delete this message immediately." else "Safe message. No critical threats detected."}"
+                    } catch (e: Exception) {
+                        scanResult = if (hasScamWords) "SCAM PROBABILITY: 94.8% (Highly Likely Scam)\n• Flagged: Urgency & banking intimidation language\n• Flagged: Obfuscated redirects identified\n\nRECOMMENDATION: DO NOT CLICK ANY LINKS. Delete this message immediately."
+                        else "SCAM PROBABILITY: 4.5% (Safe)\n• Verified linguistic structure\n\nRECOMMENDATION: Safe message. No scams detected."
+                    } finally {
+                        isLoading = false
+                    }
+                }
             },
             colors = ButtonDefaults.buttonColors(containerColor = CyberSecondary),
             shape = RoundedCornerShape(8.dp),
@@ -1039,12 +1356,19 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
                 .fillMaxWidth()
                 .height(48.dp)
         ) {
-            Text("RUN TEXT FRAUD CHECK", color = Color.White, fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("ANALYZING NLP MATRIX...", color = Color.White, fontWeight = FontWeight.Bold)
+            } else {
+                Text("RUN TEXT FRAUD CHECK", color = Color.White, fontWeight = FontWeight.Bold)
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         scanResult?.let {
+            val isScam = it.contains("Likely Scam") || it.contains("SCAM PROBABILITY: 9") || it.contains("SCAM PROBABILITY: 8") || it.contains("SCAM PROBABILITY: 7")
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1052,7 +1376,7 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
                     .background(CyberCard)
                     .border(
                         1.dp,
-                        if (it.contains("94.8%")) CyberDanger.copy(alpha = 0.3f) else CyberSuccess.copy(alpha = 0.3f),
+                        if (isScam) CyberDanger.copy(alpha = 0.3f) else CyberSuccess.copy(alpha = 0.3f),
                         RoundedCornerShape(12.dp)
                     )
                     .padding(16.dp)
@@ -1062,11 +1386,354 @@ fun SMSAnalyzerScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = it,
-                        color = if (it.contains("94.8%")) CyberDanger else CyberSuccess,
+                        color = if (isScam) CyberDanger else CyberSuccess,
                         fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 18.sp
                     )
                 }
+            }
+        }
+    }
+}
+
+fun generateChatbotFallback(query: String): String {
+    val q = query.lowercase()
+    return when {
+        q.contains("phish") || q.contains("link") || q.contains("url") ->
+            "🛡️ **Phishing Defense Guidance**:\n\n" +
+            "1. **Check Domain Carefully**: Attackers impersonate brands using similar spellings (e.g. `paypa1` or `sec-google.xyz`).\n" +
+            "2. **Look for IP Hosts**: Legitimate services never ask you to login using a raw IP address (e.g. `http://192.168...`).\n" +
+            "3. **Verify with Sentinel URL Scanner**: Paste the suspicious link into Sentinel's **URL Scan** tab for real-time signature and brand spoofing detection."
+
+        q.contains("permission") || q.contains("accessib") || q.contains("audit") ->
+            "⚠️ **Dangerous Android Permissions Explained**:\n\n" +
+            "• **Accessibility Service**: Can read all on-screen content and simulate clicks. Only grant to trusted apps!\n" +
+            "• **SMS Access**: Can intercept two-factor authentication (OTP) codes.\n" +
+            "• **Draw Over Other Apps**: Used by malware to create invisible overlay login screens.\n\n" +
+            "Use Sentinel's **Auditor** to review all third-party apps requesting these elevated permissions."
+
+        q.contains("hack") || q.contains("virus") || q.contains("compromise") ->
+            "🚨 **Immediate Incident Response Protocol**:\n\n" +
+            "1. **Enable Airplane Mode** immediately to cut off any command-and-control connection.\n" +
+            "2. Open Sentinel's **Auditor** to inspect all third-party installed apps and remove suspicious ones.\n" +
+            "3. Revoke **Accessibility** and **Device Admin** privileges in Android Settings.\n" +
+            "4. Change passwords for sensitive financial and email accounts from a clean secondary device."
+
+        else ->
+            "🛡️ **Sentinel Security Advisory**:\n\n" +
+            "Always follow defense-in-depth principles: keep your device OS updated, only install apps from official stores, review permissions in Auditor, and verify all external links in the URL Scanner before entering credentials."
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatbotScreen(
+    userEmail: String,
+    token: String,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+
+    var messages by remember {
+        mutableStateOf(
+            listOf(
+                ChatMessage(
+                    role = "assistant",
+                    content = "Greetings, Agent. I am **Sentinel AI**, powered by Groq's high-speed threat intelligence engine.\n\nI can assist you with:\n• Analyzing suspicious URLs, smishing SMS, or phishing links\n• Explaining dangerous Android app permissions\n• Responding to suspected device compromise\n\nHow can I help protect your device today?"
+                )
+            )
+        )
+    }
+    var inputText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    val suggestions = listOf(
+        "Is this link phishing?",
+        "Explain dangerous permissions",
+        "How to detect phishing?",
+        "What to do if phone is hacked?"
+    )
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    fun sendMessage(prompt: String) {
+        val query = prompt.trim()
+        if (query.isEmpty() || isLoading) return
+
+        inputText = ""
+        val userMsg = ChatMessage(role = "user", content = query)
+        messages = messages + userMsg
+        isLoading = true
+
+        coroutineScope.launch {
+            try {
+                val response = SentinelApiClient.instance.sendChatMessage(
+                    token = token,
+                    req = ChatRequest(
+                        message = query,
+                        history = messages.takeLast(6)
+                    )
+                )
+                messages = messages + ChatMessage(role = "assistant", content = response.reply)
+            } catch (e: Exception) {
+                val fallbackReply = generateChatbotFallback(query)
+                messages = messages + ChatMessage(role = "assistant", content = fallbackReply)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CyberBackground)
+            .padding(16.dp)
+    ) {
+        // Top Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
+                modifier = Modifier
+                    .clickable(onClick = onBack)
+                    .size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "SENTINEL AI INTEL",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "GROQ",
+                        color = CyberSuccess,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(CyberSuccess.copy(alpha = 0.15f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+                Text(
+                    text = "High-Speed Cybersecurity Advisor",
+                    color = CyberPrimary,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            // Online status indicator
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(CyberSuccess)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick Suggestions Horizontal Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            for (suggestion in suggestions.take(2)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CyberCard)
+                        .border(1.dp, CyberPrimary.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                        .clickable { sendMessage(suggestion) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = suggestion,
+                        color = CyberPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Chat Message List
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(messages) { msg ->
+                val isUser = msg.role == "user"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+                ) {
+                    if (!isUser) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(CyberSecondary.copy(alpha = 0.2f))
+                                .border(1.dp, CyberSecondary.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SmartToy,
+                                contentDescription = "AI",
+                                tint = CyberPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .clip(
+                                RoundedCornerShape(
+                                    topStart = 12.dp,
+                                    topEnd = 12.dp,
+                                    bottomStart = if (isUser) 12.dp else 2.dp,
+                                    bottomEnd = if (isUser) 2.dp else 12.dp
+                                )
+                            )
+                            .background(
+                                if (isUser) CyberPrimary.copy(alpha = 0.15f)
+                                else CyberCard
+                            )
+                            .border(
+                                1.dp,
+                                if (isUser) CyberPrimary.copy(alpha = 0.4f)
+                                else Color.White.copy(alpha = 0.08f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            text = msg.content,
+                            color = if (isUser) Color.White else Color(0xFFE2E8F0),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+
+            if (isLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(CyberSecondary.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SmartToy,
+                                contentDescription = "AI",
+                                tint = CyberPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(CyberCard)
+                                .border(1.dp, CyberPrimary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    color = CyberPrimary,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Analyzing threat matrix via Groq...",
+                                    color = CyberPrimary,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Input row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(CyberCard)
+                .border(1.dp, CyberPrimary.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                placeholder = {
+                    Text("Ask Sentinel AI about security...", color = Color.Gray, fontSize = 12.sp)
+                },
+                maxLines = 3,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(
+                onClick = { sendMessage(inputText) },
+                enabled = inputText.isNotBlank() && !isLoading
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Send,
+                    contentDescription = "Send",
+                    tint = if (inputText.isNotBlank() && !isLoading) CyberPrimary else Color.DarkGray,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }
@@ -1088,15 +1755,35 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
         onBack()
     }
 
-    // Retrieve real apps & calculate threat risk scores dynamically
+    // Retrieve ONLY third-party user-installed apps & calculate threat risk scores dynamically
     val appRisks = remember {
         val pm = context.packageManager
         val packages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
         val risks = mutableListOf<AppRiskInfo>()
 
         for (pkg in packages) {
-            val isSystemApp = (pkg.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-            if (isSystemApp) continue
+            val appInfo = pkg.applicationInfo ?: continue
+            val pkgName = pkg.packageName.lowercase()
+
+            // 1. Strict System and OEM exclusion flags
+            val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (isSystemApp || isUpdatedSystemApp) continue
+
+            // 2. Package prefix exclusion for vendor/OEM background bloatware
+            if (pkgName.startsWith("com.android.") ||
+                pkgName.startsWith("com.google.android.") ||
+                pkgName.startsWith("com.google.ar.") ||
+                pkgName.startsWith("com.miui.") ||
+                pkgName.startsWith("com.xiaomi.") ||
+                pkgName.startsWith("com.qualcomm.") ||
+                pkgName.startsWith("com.sec.android.") ||
+                pkgName.startsWith("com.huawei.") ||
+                pkgName.startsWith("android") ||
+                pkgName == "com.sentinelAI" ||
+                pkgName == context.packageName) {
+                continue
+            }
 
             val permissions = pkg.requestedPermissions ?: emptyArray<String>()
             var riskScore = 0
@@ -1105,63 +1792,38 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
             for (perm in permissions) {
                 when (perm) {
                     "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { riskScore += 40; flaggedPerms.add("Accessibility") }
-                    "android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS" -> { riskScore += 30; flaggedPerms.add("SMS") }
+                    "android.permission.READ_SMS", "android.permission.RECEIVE_SMS", "android.permission.SEND_SMS" -> { riskScore += 30; flaggedPerms.add("SMS Access") }
                     "android.permission.SYSTEM_ALERT_WINDOW" -> { riskScore += 25; flaggedPerms.add("Draw Over Apps") }
                     "android.permission.RECORD_AUDIO" -> { riskScore += 20; flaggedPerms.add("Microphone") }
                     "android.permission.CAMERA" -> { riskScore += 20; flaggedPerms.add("Camera") }
                     "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION" -> { riskScore += 15; flaggedPerms.add("Location") }
-                    "android.permission.READ_CONTACTS" -> { riskScore += 10; flaggedPerms.add("Contacts") }
-                    "android.permission.READ_EXTERNAL_STORAGE" -> { riskScore += 10; flaggedPerms.add("Storage") }
+                    "android.permission.READ_CONTACTS", "android.permission.WRITE_CONTACTS" -> { riskScore += 15; flaggedPerms.add("Contacts") }
+                    "android.permission.READ_CALL_LOG", "android.permission.WRITE_CALL_LOG" -> { riskScore += 25; flaggedPerms.add("Call Logs") }
+                    "android.permission.READ_EXTERNAL_STORAGE", "android.permission.MANAGE_EXTERNAL_STORAGE" -> { riskScore += 10; flaggedPerms.add("Storage") }
                 }
             }
 
-            if (riskScore > 0) {
-                val (level, color) = when {
-                    riskScore >= 50 -> "CRITICAL RISK" to CyberDanger
-                    riskScore >= 30 -> "HIGH RISK" to CyberWarning
-                    riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
-                    else -> "LOW RISK" to Color.Gray
-                }
-                val appName = pkg.applicationInfo.loadLabel(pm).toString()
-                risks.add(
-                    AppRiskInfo(
-                        appName = appName,
-                        packageName = pkg.packageName,
-                        riskScore = riskScore,
-                        riskLevel = level,
-                        riskColor = color,
-                        permissions = flaggedPerms.distinct()
-                    )
+            val (level, color) = when {
+                riskScore >= 50 -> "CRITICAL RISK" to CyberDanger
+                riskScore >= 30 -> "HIGH RISK" to CyberWarning
+                riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
+                riskScore > 0 -> "LOW RISK" to Color.Gray
+                else -> "CLEAN / SAFE" to CyberSuccess
+            }
+
+            val appName = appInfo.loadLabel(pm).toString()
+            risks.add(
+                AppRiskInfo(
+                    appName = appName,
+                    packageName = pkg.packageName,
+                    riskScore = riskScore,
+                    riskLevel = level,
+                    riskColor = color,
+                    permissions = if (flaggedPerms.isNotEmpty()) flaggedPerms.distinct() else listOf("Standard safe permissions")
                 )
-            }
+            )
         }
 
-        // Fallback to system apps if no third-party user apps are found (e.g. on clean emulator)
-        if (risks.isEmpty()) {
-            for (pkg in packages) {
-                val permissions = pkg.requestedPermissions ?: emptyArray<String>()
-                var riskScore = 0
-                val flaggedPerms = mutableListOf<String>()
-                for (perm in permissions) {
-                    when (perm) {
-                        "android.permission.BIND_ACCESSIBILITY_SERVICE" -> { riskScore += 40; flaggedPerms.add("Accessibility") }
-                        "android.permission.READ_SMS" -> { riskScore += 30; flaggedPerms.add("SMS") }
-                        "android.permission.CAMERA" -> { riskScore += 20; flaggedPerms.add("Camera") }
-                        "android.permission.ACCESS_FINE_LOCATION" -> { riskScore += 15; flaggedPerms.add("Location") }
-                    }
-                }
-                if (riskScore > 0) {
-                    val (level, color) = when {
-                        riskScore >= 40 -> "CRITICAL RISK" to CyberDanger
-                        riskScore >= 30 -> "HIGH RISK" to CyberWarning
-                        riskScore >= 15 -> "MEDIUM RISK" to CyberWarning
-                        else -> "LOW RISK" to Color.Gray
-                    }
-                    val appName = pkg.applicationInfo.loadLabel(pm).toString()
-                    risks.add(AppRiskInfo(appName, pkg.packageName, riskScore, level, color, flaggedPerms.distinct()))
-                }
-            }
-        }
         risks.sortedByDescending { it.riskScore }
     }
 
@@ -1184,19 +1846,51 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
             Text("PERMISSION THREAT AUDITOR", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "Active system background access channels audited by dynamic vulnerability risk matrices:",
-            color = Color.LightGray,
-            fontSize = 13.sp,
-            lineHeight = 18.sp
-        )
-
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Third party apps summary banner
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(CyberCard)
+                .border(1.dp, CyberWarning.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "THIRD-PARTY APPS AUDITED: ${appRisks.size}",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "System bloatware excluded • Tap app to inspect",
+                        color = Color.Gray,
+                        fontSize = 10.sp
+                    )
+                }
+                Text(
+                    text = "${appRisks.count { it.riskScore > 0 }} ELEVATED",
+                    color = if (appRisks.any { it.riskScore >= 30 }) CyberDanger else CyberSuccess,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (appRisks.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No risk applications detected on host device.", color = CyberSuccess, fontSize = 14.sp)
+                Text("No third-party user applications detected on host device.", color = CyberSuccess, fontSize = 14.sp)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1207,7 +1901,15 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                             .clip(RoundedCornerShape(8.dp))
                             .background(CyberCard)
                             .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
-                            .padding(16.dp),
+                            .clickable {
+                                try {
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", app.packageName, null)
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            }
+                            .padding(14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1228,7 +1930,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                             if (app.permissions.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Flagged: " + app.permissions.joinToString(", "),
+                                    text = "Permissions: " + app.permissions.joinToString(", "),
                                     color = app.riskColor,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,

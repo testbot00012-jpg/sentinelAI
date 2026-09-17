@@ -61,6 +61,10 @@ data class APKScanResponse(
 data class MetricsSummary(val security_score: Int, val threats_blocked: Int, val total_scans: Int)
 data class MetricsResponse(val summary: MetricsSummary)
 
+data class ChatMessage(val role: String, val content: String)
+data class ChatRequest(val message: String, val history: List<ChatMessage> = emptyList())
+data class ChatResponse(val reply: String, val model: String, val timestamp: String)
+
 interface SentinelApiService {
     @POST("api/auth/verify")
     suspend fun verifyFirebaseToken(@Body req: FirebaseTokenRequest): AuthResponse
@@ -87,4 +91,11 @@ interface SentinelApiService {
     suspend fun getMetrics(
         @Header("Authorization") token: String
     ): MetricsResponse
+
+    @POST("api/chat")
+    suspend fun sendChatMessage(
+        @Header("Authorization") token: String,
+        @Body req: ChatRequest
+    ): ChatResponse
 }
+
