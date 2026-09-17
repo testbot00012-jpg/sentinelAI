@@ -328,7 +328,7 @@ export default function LandingPage() {
             },
             {
               q: "Can I self-host this whole platform?",
-              a: "Absolutely. We supply a multi-container Docker orchestration blueprint setting up the Next.js panel, Python API server, and a robust PostgreSQL database setup instantly."
+              a: "Absolutely. We supply a multi-container Docker orchestration blueprint setting up the Next.js panel, Python API server, and a robust MongoDB database setup instantly."
             }
           ].map((faq, i) => (
             <div key={i} className="glass-panel p-6 rounded-xl border-white/5">

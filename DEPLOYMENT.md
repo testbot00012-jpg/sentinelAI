@@ -3,7 +3,7 @@
 This guide provides step-by-step instructions for deploying the Sentinel AI Cybersecurity Platform across various cloud providers (VPS, Render, Railway, AWS).
 
 ## General Prerequisites
-- A PostgreSQL database (Neon, Supabase, or AWS RDS).
+- A MongoDB database (MongoDB Atlas or self-hosted MongoDB).
 - A Redis instance (Upstash, Render, or ElastiCache).
 - Your Firebase `service_account.json` and client configurations.
 - API Keys for AlienVault OTX & URLScan.io.
@@ -30,10 +30,10 @@ cd sentinel-ai
 ### Step 3: Configure Environment Variables
 Create a `.env` file in the root directory:
 ```bash
-DATABASE_URL=postgresql://user:password@host:5432/sentinel_db
+DATABASE_URL=mongodb+srv://user:password@cluster.mongodb.net/?appName=Cluster0
 REDIS_URL=redis://host:6379/0
 SECRET_KEY=your_secure_random_string
-FIREBASE_PROJECT_ID=senthel-f8ddc
+FIREBASE_PROJECT_ID=sentinelai-9d573
 NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 ```
 
@@ -44,7 +44,7 @@ Ensure your Firebase `service_account.json` is placed in `backend/app/core/servi
 ```bash
 docker-compose up -d --build
 ```
-This will start PostgreSQL, Redis, FastAPI Backend, Next.js Frontend, and the Nginx reverse proxy.
+This will start Redis, FastAPI Backend, Next.js Frontend, and the Nginx reverse proxy (connecting to your MongoDB instance).
 
 ---
 
@@ -78,13 +78,13 @@ Render is excellent for easy, managed deployments.
 Railway provides a highly seamless experience for full-stack apps.
 
 ### Step 1: Provision Databases
-1. In your Railway project, click **New** -> **Database** -> **Add PostgreSQL**.
+1. Connect a **MongoDB** database (e.g., MongoDB Atlas connection string) or deploy MongoDB on Railway.
 2. Click **New** -> **Database** -> **Add Redis**.
 
 ### Step 2: Deploy Backend
 1. Click **New** -> **GitHub Repo**. Select your repository.
 2. Go to Settings for this service -> Root Directory -> type `/backend`.
-3. Add the environment variables from the provisioned PostgreSQL and Redis instances (e.g., `DATABASE_URL`).
+3. Add the environment variables from MongoDB (e.g., `DATABASE_URL`) and Redis (`REDIS_URL`).
 
 ### Step 3: Deploy Frontend
 1. Click **New** -> **GitHub Repo**. Select your repository again.
@@ -93,12 +93,12 @@ Railway provides a highly seamless experience for full-stack apps.
 
 ---
 
-## 4. Deploying on AWS (ECS + RDS + ElastiCache)
+## 4. Deploying on AWS (ECS + MongoDB Atlas / DocumentDB + ElastiCache)
 
 For highly scalable enterprise deployments.
 
 ### Step 1: Managed Services
-- Provision an **RDS PostgreSQL** database instance.
+- Provision a **MongoDB Atlas** cluster or **Amazon DocumentDB** (MongoDB compatible).
 - Provision an **ElastiCache Redis** cluster.
 
 ### Step 2: Container Registry (ECR)

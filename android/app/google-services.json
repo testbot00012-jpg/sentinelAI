@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "183218626318",
+    "project_id": "sentinelai-9d573",
+    "storage_bucket": "sentinelai-9d573.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:183218626318:android:a497f1fd2d53d5cd91815f",
+        "android_client_info": {
+          "package_name": "com.sentinelAI"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAeeQmpdIaCxYnTq9l9gjsoSU2jjIXLMoQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

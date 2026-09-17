@@ -6,7 +6,7 @@ Sentinel AI is a production-grade, state-of-the-art security intelligence suite 
 
 ## Technical Stack Architecture
 
-- **Backend**: FastAPI (Python 3.13), SQLAlchemy, PostgreSQL, Redis, Scikit-learn, Firebase ID Token JWT validation.
+- **Backend**: FastAPI (Python 3.13), Motor, MongoDB, Redis, Scikit-learn, Firebase ID Token JWT validation.
 - **Web Console**: Next.js 15 App Router, TypeScript, Tailwind CSS, Recharts, Zustand.
 - **Android App**: Kotlin, Jetpack Compose, Material Design 3, Retrofit, MVVM Architecture.
 
@@ -17,7 +17,7 @@ Sentinel AI is a production-grade, state-of-the-art security intelligence suite 
 Sentinel AI utilizes **Firebase Authentication** as its primary identity provider.
 - **ID Token Exchange**: The Android app or Web App handles user sign-in directly using the Firebase SDK and acquires a Firebase ID Token.
 - **Secure API Requests**: The client sends the ID Token in the `Authorization: Bearer <ID_TOKEN>` header for API queries.
-- **Automatic User Provisioning (SSO)**: The backend validates the ID Token's signatures against Google's public certificates. On successful validation, it automatically provisions a local PostgreSQL user record on the fly to track threat histories and devices!
+- **Automatic User Provisioning (SSO)**: The backend validates the ID Token's signatures against Google's public certificates. On successful validation, it automatically provisions a local MongoDB user record on the fly to track threat histories and devices!
 - **Setup Configuration**: To connect your live Firebase project, set your project identifier inside `backend/.env`:
   ```ini
   FIREBASE_PROJECT_ID=your-firebase-project-id

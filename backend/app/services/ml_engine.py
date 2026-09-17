@@ -1,32 +1,84 @@
-import re
-from urllib.parse import urlparse
-
 import os
+import re
+import logging
+from urllib.parse import urlparse
+from typing import List, Dict, Any, Optional
 import requests
+import joblib
+import numpy as np
+
+from app.ml.feature_extractors import (
+    extract_url_features,
+    explain_url_features,
+    extract_sms_heuristic_features,
+    explain_sms_features,
+    extract_apk_permission_vector,
+    explain_apk_permissions,
+    SHORTENER_DOMAINS,
+    SCAM_SMS_KEYWORDS
+)
+
+logger = logging.getLogger("sentinel.ml_engine")
+MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ml", "saved_models")
+
 
 class SentinelMLEngine:
+    """
+    Production-grade AI Threat Intelligence Engine for Sentinel AI.
+    Combines trained Scikit-Learn machine learning pipelines with live threat intelligence feeds
+    (AlienVault OTX & URLScan.io) and fail-safe heuristic safeguards.
+    """
+
     def __init__(self):
-        # Load developer API keys from environment
+        # Load API keys from environment
         self.otx_key = os.getenv("OTX_API_KEY", "6a922e6db6a8ab67f8fe2a632cc09290c0f7a3c507055f0cbcddf0cb2414dbd1")
         self.urlscan_key = os.getenv("URLSCAN_API_KEY", "019e7c24-98a2-763a-af70-ace24a80b96b")
 
-        # Suspicious keywords for SMS/Email scam detection
-        self.scam_keywords = {
-            "otp": 0.95, "verify": 0.80, "suspended": 0.85, "winner": 0.90, "prize": 0.90,
-            "lottery": 0.95, "claim": 0.80, "bank": 0.65, "blocked": 0.85, "reset password": 0.80,
-            "kyc": 0.90, "login": 0.70, "click here": 0.85, "update profile": 0.75, "free cash": 0.95,
-            "urgent": 0.80, "tax refund": 0.90, "credit card": 0.75, "unusual activity": 0.85
-        }
-        # Popular URL shorteners
-        self.shorteners = ["bit.ly", "goo.gl", "tinyurl.com", "t.co", "is.gd", "buff.ly", "adf.ly", "ow.ly"]
+        # Models storage
+        self.url_model = None
+        self.sms_model = None
+        self.apk_model = None
 
-    def query_otx_threat_intel(self, domain: str) -> dict:
-        """
-        Queries AlienVault OTX for domain reputation and returns list of indicators.
-        """
+        self._load_models()
+
+    def _load_models(self):
+        """Loads serialized Scikit-Learn models from saved_models directory with safe fallbacks."""
+        # 1. URL Phishing Detector
+        url_path = os.path.join(MODELS_DIR, "url_phishing_model.joblib")
+        if os.path.exists(url_path):
+            try:
+                self.url_model = joblib.load(url_path)
+                logger.info("[ML Engine] URL Phishing Random Forest model loaded.")
+            except Exception as e:
+                logger.warning(f"[ML Engine] Failed to load URL model ({e}), using heuristic fallback.")
+
+        # 2. SMS Fraud NLP Classifier
+        sms_path = os.path.join(MODELS_DIR, "sms_fraud_model.joblib")
+        if os.path.exists(sms_path):
+            try:
+                self.sms_model = joblib.load(sms_path)
+                logger.info("[ML Engine] SMS Fraud NLP pipeline loaded.")
+            except Exception as e:
+                logger.warning(f"[ML Engine] Failed to load SMS model ({e}), using heuristic fallback.")
+
+        # 3. Android APK Malware Analyzer
+        apk_path = os.path.join(MODELS_DIR, "apk_malware_model.joblib")
+        if os.path.exists(apk_path):
+            try:
+                self.apk_model = joblib.load(apk_path)
+                logger.info("[ML Engine] APK Malware Classifier model loaded.")
+            except Exception as e:
+                logger.warning(f"[ML Engine] Failed to load APK model ({e}), using heuristic fallback.")
+
+    # ========================================================================
+    # Threat Intelligence Feeds (OTX & URLScan)
+    # ========================================================================
+
+    def query_otx_threat_intel(self, domain: str) -> Dict[str, Any]:
+        """Queries AlienVault OTX for domain reputation indicators."""
         if not self.otx_key:
             return {"malicious": False, "details": []}
-        
+
         try:
             url = f"https://otx.alienvault.com/api/v1/indicators/domain/{domain}/general"
             headers = {"X-OTX-API-KEY": self.otx_key}
@@ -41,21 +93,20 @@ class SentinelMLEngine:
                     for p in pulses[:3]:
                         tags.extend(p.get("tags", []))
                     tags = list(set(tags))[:5]
+                    tag_str = f" (Tags: {', '.join(tags)})" if tags else ""
                     return {
                         "malicious": True,
-                        "details": [f"AlienVault OTX: Flagged in {malicious_pulses} malicious threat intelligence pulses (Tags: {', '.join(tags)})"]
+                        "details": [f"AlienVault OTX: Flagged in {malicious_pulses} malicious threat pulses{tag_str}"]
                     }
         except Exception:
             pass
         return {"malicious": False, "details": []}
 
-    def query_urlscan_threat_intel(self, domain: str) -> dict:
-        """
-        Queries URLScan.io search API for previous scans of this domain to evaluate threat flags.
-        """
+    def query_urlscan_threat_intel(self, domain: str) -> Dict[str, Any]:
+        """Queries URLScan.io search API for previous historical scans of the domain."""
         if not self.urlscan_key:
             return {"malicious": False, "details": []}
-        
+
         try:
             url = f"https://urlscan.io/api/v1/search/?q=domain:{domain}"
             headers = {"API-Key": self.urlscan_key}
@@ -70,7 +121,7 @@ class SentinelMLEngine:
                         overall = verdicts.get("overall", {})
                         if overall.get("malicious") or overall.get("score", 0) > 60:
                             malicious_count += 1
-                    
+
                     if malicious_count > 0:
                         return {
                             "malicious": True,
@@ -80,98 +131,82 @@ class SentinelMLEngine:
             pass
         return {"malicious": False, "details": []}
 
-    def analyze_url(self, url: str) -> dict:
+    # ========================================================================
+    # 1. URL PHISHING ANALYSIS
+    # ========================================================================
+
+    def analyze_url(self, url: str) -> Dict[str, Any]:
         """
-        Extracts features from the URL, queries live OTX & URLScan intelligence, and applies a rule-based
-        Random Forest equivalent heuristic to calculate a vulnerability/phishing classification.
+        Analyzes a URL using the trained Scikit-Learn Random Forest Classifier,
+        combines with live AlienVault OTX & URLScan.io intelligence, and returns risk breakdown.
         """
+        if not url:
+            return {"url": "", "status": "Safe", "score": 5.0, "details": ["Empty URL string"]}
+
         if not url.startswith(("http://", "https://")):
-            url = "https://" + url
+            url_norm = "https://" + url
+        else:
+            url_norm = url
 
         try:
-            parsed = urlparse(url)
-            domain = parsed.netloc
-            path = parsed.path
+            parsed = urlparse(url_norm)
+            domain = parsed.netloc.split(":")[0] if ":" in parsed.netloc else parsed.netloc
         except Exception:
-            return {"status": "Suspicious", "score": 75.0, "details": ["Malformed URL structure"]}
+            domain = ""
 
-        score = 0
-        details = []
+        # Extract features and explanations
+        features = extract_url_features(url_norm)
+        details = explain_url_features(url_norm)
 
-        # 1. IP Address Usage
-        ip_pattern = r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
-        if re.match(ip_pattern, domain):
-            score += 35
-            details.append("Uses raw IP address instead of domain name")
+        # ML Model Inference
+        ml_score = None
+        if self.url_model is not None:
+            try:
+                feature_arr = np.array([features], dtype=np.float64)
+                probs = self.url_model.predict_proba(feature_arr)[0]
+                phishing_prob = probs[1] * 100.0
+                ml_score = phishing_prob
+            except Exception as e:
+                logger.error(f"[ML Engine] URL model inference error: {e}")
 
-        # 2. URL Length
-        if len(url) > 75:
-            score += 15
-            details.append("Abnormally long URL length (>75 chars)")
-        elif len(url) > 54:
-            score += 5
+        # Fallback heuristic scoring if model not loaded or error
+        if ml_score is None:
+            ml_score = 15.0
+            if len(url_norm) > 75:
+                ml_score += 20.0
+            if any(s in domain for s in SHORTENER_DOMAINS):
+                ml_score += 25.0
+            if "@" in url_norm:
+                ml_score += 25.0
+            if url_norm.count("//") > 1:
+                ml_score += 20.0
+            if "-" in domain:
+                ml_score += 15.0
 
-        # 3. Shortened URL
-        if any(shortener in domain for shortener in self.shorteners):
-            score += 25
-            details.append("Uses a known URL shortening service")
+        # Query Live Threat Intelligence
+        if domain:
+            try:
+                otx_result = self.query_otx_threat_intel(domain)
+                if otx_result["malicious"]:
+                    ml_score = max(ml_score, 80.0)
+                    details.extend(otx_result["details"])
+            except Exception:
+                pass
 
-        # 4. Presence of '@'
-        if "@" in url:
-            score += 20
-            details.append("Contains '@' symbol (often used to obscure real domain)")
+            try:
+                urlscan_result = self.query_urlscan_threat_intel(domain)
+                if urlscan_result["malicious"]:
+                    ml_score = max(ml_score, 85.0)
+                    details.extend(urlscan_result["details"])
+            except Exception:
+                pass
 
-        # 5. Redirecting using '//'
-        if url.count("//") > 1:
-            score += 20
-            details.append("Contains secondary redirect '//'")
+        # Calibrate final score
+        final_score = round(min(max(ml_score, 5.0), 99.0), 1)
 
-        # 6. Prefix/Suffix '-' in domain
-        if "-" in domain:
-            score += 15
-            details.append("Domain contains '-' symbol (common in phishing campaigns)")
-
-        # 7. Subdomains count
-        subdomains = domain.split(".")
-        if len(subdomains) > 3:
-            score += 15
-            details.append(f"High number of subdomains: {len(subdomains) - 2}")
-
-        # 8. HTTPS token in domain
-        if "https" in domain.lower() or "http" in domain.lower():
-            score += 25
-            details.append("Obfuscatory 'https' or 'http' inside subdomains")
-
-        # 9. Suspicious keywords in domain or path
-        suspicious_words = ["secure", "login", "update", "bank", "verification", "support", "billing", "signin"]
-        for word in suspicious_words:
-            if word in domain.lower() or word in path.lower():
-                score += 15
-                details.append(f"Domain/path contains high-risk keyword: '{word}'")
-
-        # 10. Live Threat Intelligence Lookups
-        try:
-            otx_result = self.query_otx_threat_intel(domain)
-            if otx_result["malicious"]:
-                score += 50
-                details.extend(otx_result["details"])
-        except Exception:
-            pass
-
-        try:
-            urlscan_result = self.query_urlscan_threat_intel(domain)
-            if urlscan_result["malicious"]:
-                score += 60
-                details.extend(urlscan_result["details"])
-        except Exception:
-            pass
-
-        # Bound score between 0 and 100
-        score = min(max(score, 5), 98)
-
-        if score < 40:
+        if final_score < 40.0:
             status = "Safe"
-        elif score < 70:
+        elif final_score < 70.0:
             status = "Suspicious"
         else:
             status = "Phishing"
@@ -179,113 +214,121 @@ class SentinelMLEngine:
         return {
             "url": url,
             "status": status,
-            "score": score,
-            "details": details if details else ["No malicious URL markers found"]
+            "score": final_score,
+            "details": details if details else ["URL exhibits benign baseline characteristics"]
         }
 
-    def analyze_sms_or_email(self, text: str) -> dict:
+    # ========================================================================
+    # 2. SMS / EMAIL SCAM NLP ANALYSIS
+    # ========================================================================
+
+    def analyze_sms_or_email(self, text: str) -> Dict[str, Any]:
         """
-        Uses an NLP Keyword-Heuristic & Cosine-Scoring emulator to analyze text for scam likelihood.
+        Analyzes SMS or email text for scam likelihood using the trained NLP pipeline
+        (TF-IDF word/char n-grams + dense heuristic triggers) and returns probability & trigger explanation.
         """
-        text_lower = text.lower()
-        score = 0.0
-        matched = []
+        if not text or not text.strip():
+            return {
+                "original_text": text or "",
+                "scam_probability": 5.0,
+                "classification": "Normal / Safe",
+                "explanation": "No text provided for analysis.",
+                "contains_link": False
+            }
 
-        # Feature weight matching
-        for word, weight in self.scam_keywords.items():
-            if word in text_lower:
-                score += weight * 35.0
-                matched.append(word)
+        reasons, has_link = explain_sms_features(text)
+        scam_prob = None
 
-        # Check for link inclusion
-        link_found = False
-        if re.search(r"https?://\S+|www\.\S+|\.com\b|\.net\b", text_lower):
-            score += 20.0
-            link_found = True
-            matched.append("hyperlink")
+        # ML Model Inference
+        if self.sms_model is not None:
+            try:
+                probs = self.sms_model.predict_proba([text])[0]
+                scam_prob = probs[1] * 100.0
+            except Exception as e:
+                logger.error(f"[ML Engine] SMS NLP inference error: {e}")
 
-        # Urgency indicators
-        urgency_pattern = r"(immediately|now|hurry|within\s+\d+\s+(?:minutes|hours|days)|expires|action\s+required)"
-        if re.search(urgency_pattern, text_lower):
-            score += 15.0
-            matched.append("urgency markers")
+        # Fallback heuristic calculation
+        if scam_prob is None:
+            text_lower = text.lower()
+            heuristic_score = 5.0
+            for kw, weight in SCAM_SMS_KEYWORDS.items():
+                if kw in text_lower:
+                    heuristic_score += weight * 30.0
+            if has_link:
+                heuristic_score += 20.0
+            scam_prob = heuristic_score
 
-        score = min(max(score, 5.0), 99.0)
+        final_prob = round(min(max(scam_prob, 5.0), 99.0), 1)
 
-        # Classifications
-        if score < 30:
+        if final_prob < 35.0:
             classification = "Normal / Safe"
-        elif score < 65:
+        elif final_prob < 70.0:
             classification = "Spam / Suspicious"
         else:
             classification = "Highly Likely Scam / Phishing"
 
-        explanation = f"Detected text anomalies and risk indicators: {', '.join(matched)}." if matched else "No risk indicators detected."
+        explanation = f"Detected risk factors: {', '.join(reasons)}." if reasons else "No risk indicators detected."
 
         return {
             "original_text": text,
-            "scam_probability": score,
+            "scam_probability": final_prob,
             "classification": classification,
             "explanation": explanation,
-            "contains_link": link_found
+            "contains_link": has_link
         }
 
-    def analyze_apk_metadata(self, package_name: str, app_name: str, permissions: list[str]) -> dict:
+    # ========================================================================
+    # 3. ANDROID APK PERMISSION MALWARE ANALYSIS
+    # ========================================================================
+
+    def analyze_apk_metadata(self, package_name: str, app_name: str, permissions: List[str]) -> Dict[str, Any]:
         """
-        Analyzes permissions requested by an APK to assign a malware risk score and threat classification.
+        Evaluates Android APK permissions using the trained combinatorial Random Forest
+        malware classifier and synergy threat pattern analysis.
         """
-        # Critical malicious permissions
-        critical_perms = {
-            "android.permission.BIND_ACCESSIBILITY_SERVICE": 35,
-            "android.permission.BIND_DEVICE_ADMIN": 30,
-            "android.permission.SYSTEM_ALERT_WINDOW": 25,
-            "android.permission.SEND_SMS": 20,
-            "android.permission.RECEIVE_SMS": 20,
-            "android.permission.READ_SMS": 15,
-            "android.permission.RECORD_AUDIO": 15,
-            "android.permission.CAMERA": 10,
-            "android.permission.ACCESS_FINE_LOCATION": 10,
-            "android.permission.READ_PHONE_STATE": 10,
-            "android.permission.PROCESS_OUTGOING_CALLS": 15,
-            "android.permission.WRITE_EXTERNAL_STORAGE": 5,
-            "android.permission.READ_CONTACTS": 10,
-        }
+        if not permissions:
+            return {
+                "package_name": package_name,
+                "app_name": app_name,
+                "malware_score": 5.0,
+                "threat_category": "Clean / Legitimate Utility App",
+                "flagged_permissions": [],
+                "total_permissions_scanned": 0,
+                "status": "Safe"
+            }
 
-        score = 10  # Base score
-        flagged_permissions = []
+        flagged_perms, detected_category = explain_apk_permissions(permissions)
+        ml_score = None
 
-        for perm in permissions:
-            # Match standard or short-hand format
-            matched = False
-            for k, val in critical_perms.items():
-                if k in perm or k.split(".")[-1] in perm:
-                    score += val
-                    flagged_permissions.append(f"{k.split('.')[-1]} ({val}% risk)")
-                    matched = True
-                    break
-            if not matched:
-                score += 1  # Standard permission increment
+        # ML Model Inference
+        if self.apk_model is not None:
+            try:
+                feat_vec = extract_apk_permission_vector(permissions)
+                probs = self.apk_model.predict_proba([feat_vec])[0]
+                ml_score = probs[1] * 100.0
+            except Exception as e:
+                logger.error(f"[ML Engine] APK model inference error: {e}")
 
-        score = min(max(score, 5), 100)
+        # Fallback calculation
+        if ml_score is None:
+            base_score = 10.0 + (len(flagged_perms) * 20.0)
+            ml_score = base_score
 
-        # Classify threat categories based on combination of permissions
-        if "BIND_ACCESSIBILITY_SERVICE" in "".join(permissions) or "BIND_DEVICE_ADMIN" in "".join(permissions):
-            category = "Ransomware / Banking Trojan Risk"
-        elif "SEND_SMS" in "".join(permissions) or "RECEIVE_SMS" in "".join(permissions):
-            category = "SMS Spy / Premium Dialer Spyware"
-        elif score >= 60:
-            category = "Spyware / Advanced Persistent Threat (APT)"
-        elif score >= 35:
-            category = "Adware / Riskware"
+        final_score = round(min(max(ml_score, 5.0), 99.0), 1)
+
+        if final_score < 35.0:
+            status = "Safe"
+        elif final_score < 65.0:
+            status = "Suspicious"
         else:
-            category = "Clean / Legitimate Utility App"
+            status = "High Threat"
 
         return {
             "package_name": package_name,
             "app_name": app_name,
-            "malware_score": score,
-            "threat_category": category,
-            "flagged_permissions": flagged_permissions,
+            "malware_score": final_score,
+            "threat_category": detected_category,
+            "flagged_permissions": flagged_perms,
             "total_permissions_scanned": len(permissions),
-            "status": "Safe" if score < 35 else "Suspicious" if score < 60 else "High Threat"
+            "status": status
         }

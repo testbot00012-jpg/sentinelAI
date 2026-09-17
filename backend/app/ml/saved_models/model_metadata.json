@@ -1,0 +1,30 @@
+{
+  "engine": "Sentinel AI Production Cyber Threat ML Suite",
+  "trained_at": "2026-09-07T07:18:25.789237+00:00",
+  "models": {
+    "url_phishing_detector": {
+      "algorithm": "RandomForestClassifier (150 estimators, calibrated)",
+      "metrics": {
+        "accuracy": 1.0,
+        "f1_score": 1.0,
+        "roc_auc": 1.0
+      }
+    },
+    "sms_fraud_nlp_detector": {
+      "algorithm": "FeatureUnion(TfidfVectorizer + HeuristicScaler) -> LogisticRegression",
+      "metrics": {
+        "accuracy": 1.0,
+        "f1_score": 1.0,
+        "roc_auc": 1.0
+      }
+    },
+    "apk_malware_analyzer": {
+      "algorithm": "RandomForestClassifier (Combinatorial Permission Matrix)",
+      "metrics": {
+        "accuracy": 1.0,
+        "f1_score": 1.0,
+        "roc_auc": 1.0
+      }
+    }
+  }
+}

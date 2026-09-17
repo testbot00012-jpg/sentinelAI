@@ -10,7 +10,7 @@ import firebase_admin
 from firebase_admin import credentials, auth
 
 # Settings
-FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "senthel-f8ddc")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "sentinelai-9d573")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 import json

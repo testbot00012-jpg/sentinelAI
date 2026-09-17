@@ -9,9 +9,7 @@ services:
     rootDir: backend
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: sentinel-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: redis
@@ -20,18 +18,10 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FIREBASE_PROJECT_ID
-        value: "senthel-f8ddc"
+        value: "sentinelai-9d573"
 
   # Redis Instance
   - type: redis
     name: sentinel-redis
-    region: ohio
-    plan: free
-
-databases:
-  # PostgreSQL Database
-  - name: sentinel-db
-    databaseName: sentinel
-    user: sentinel_admin
     region: ohio
     plan: free

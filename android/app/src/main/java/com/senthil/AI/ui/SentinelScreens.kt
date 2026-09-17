@@ -101,7 +101,7 @@ fun SentinelApp() {
                     currentScreen = Screen.Login
                 }
             )
-            Screen.Dashboard, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile -> {
+            Screen.Dashboard, Screen.URLScanner, Screen.SMSAnalyzer, Screen.PermissionAnalyzer, Screen.Profile, Screen.DynamicScanResult -> {
                 Scaffold(
                     bottomBar = {
                         NavigationBar(

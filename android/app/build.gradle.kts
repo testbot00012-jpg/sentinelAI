@@ -9,7 +9,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.senthil.AI"
+        applicationId = "com.sentinelAI"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
