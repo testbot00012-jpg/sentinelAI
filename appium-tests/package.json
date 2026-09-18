@@ -1,0 +1,21 @@
+{
+  "name": "sentinel-ai-appium-tests",
+  "version": "1.0.0",
+  "description": "Appium 2.x Mobile Automated E2E Test Suite for Sentinel AI Android Application",
+  "main": "appium-tests.js",
+  "scripts": {
+    "test": "node appium-tests.js",
+    "test:suite": "node tests/app-tests.js",
+    "generate-report": "python generate_test_report.py"
+  },
+  "keywords": ["appium", "android", "uiautomator2", "e2e", "testing", "sentinel-ai"],
+  "author": "Sentinel AI QA Team",
+  "license": "ISC",
+  "dependencies": {
+    "webdriverio": "^8.36.0"
+  },
+  "devDependencies": {
+    "appium": "^2.5.0",
+    "appium-uiautomator2-driver": "^3.5.0"
+  }
+}
