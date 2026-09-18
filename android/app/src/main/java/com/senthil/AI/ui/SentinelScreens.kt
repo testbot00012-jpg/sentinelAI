@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -788,9 +790,12 @@ fun DashboardScreen(userEmail: String, token: String = "", onNavigate: (Screen) 
                 }
             }
         } else {
-            // Main Dashboard stats list
+            // Main Dashboard stats list with smooth vertical scrolling
+            val scrollState = rememberScrollState()
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // Device overall score card
@@ -958,6 +963,7 @@ fun DashboardScreen(userEmail: String, token: String = "", onNavigate: (Screen) 
                         )
                     }
                 }
+                Spacer(modifier = Modifier.height(12.dp))
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -1074,110 +1080,164 @@ fun evaluateUrlHeuristics(rawUrl: String): URLScanVerdict {
     val details = mutableListOf<String>()
     var riskScore = 0.05f
 
-    // 1. Raw IP address host (e.g. http://192.168.1.1 or 45.33.32.156)
-    val ipRegex = Regex("""^https?://(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""")
-    val rawIpRegex = Regex("""^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""")
-    if (ipRegex.containsMatchIn(lower) || rawIpRegex.containsMatchIn(lower)) {
+    // 1. Properly parse destination host (stripping protocol, port, path, query)
+    val host = lower
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .split("/")[0]
+        .split("?")[0]
+        .split("#")[0]
+        .split(":")[0]
+
+    // 2. Raw IP address host (e.g. http://192.168.1.1 or 45.33.32.156)
+    val ipRegex = Regex("""^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})""")
+    if (ipRegex.matches(host) || lower.matches(Regex("""^https?://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:/.*)?$"""))) {
         riskScore += 0.85f
         details.add("Raw IPv4 host detected (obfuscation signature)")
     }
 
-    // 2. Punycode / IDN homograph attack
-    if (lower.contains("xn--")) {
-        riskScore += 0.75f
+    // 3. Punycode / IDN homograph attack
+    if (lower.contains("xn--") || host.contains("xn--")) {
+        riskScore += 0.80f
         details.add("Punycode / IDN homograph spoofing signature (xn--)")
     }
 
-    // 3. User info embedded in URL (e.g. https://google.com@evil.com)
+    // 4. User info embedded in URL (e.g. https://google.com@evil.com)
     if (lower.contains("@")) {
-        riskScore += 0.70f
+        riskScore += 0.75f
         details.add("Credential redirection obfuscation ('@' symbol in URL)")
     }
 
-    // 4. Abused Phishing TLDs
+    // 5. Abused Phishing TLDs
     val suspiciousTlds = listOf(
         ".xyz", ".top", ".buzz", ".work", ".click", ".icu", ".loan",
         ".cfd", ".link", ".gq", ".ml", ".cf", ".tk", ".ga", ".ru", ".cn",
-        ".info", ".site", ".space", ".club", ".shop", ".live", ".sbs", ".bond"
+        ".info", ".site", ".space", ".club", ".shop", ".live", ".sbs", ".bond",
+        ".online", ".vip", ".fit", ".support", ".rest", ".cam", ".stream",
+        ".guru", ".monster", ".quest", ".lat", ".autos", ".hair", ".beauty",
+        ".trade", ".party", ".racing", ".date", ".download", ".science", ".cc"
     )
     for (tld in suspiciousTlds) {
-        if (lower.contains(tld)) {
-            riskScore += 0.40f
+        if (host.endsWith(tld) || host.contains("$tld.")) {
+            riskScore += 0.45f
             details.add("High-risk top-level domain ($tld)")
             break
         }
     }
 
-    // 5. Brand Spoofing Check
+    // 6. Comprehensive Brand Spoofing Check (30+ High-Target Brands)
     val brandMap = mapOf(
-        "paypal" to listOf("paypal.com"),
-        "google" to listOf("google.com", "google.co", "accounts.google.com"),
+        "paypal" to listOf("paypal.com", "paypal.me"),
+        "google" to listOf("google.com", "google.co", "accounts.google.com", "drive.google.com", "docs.google.com"),
         "apple" to listOf("apple.com", "icloud.com"),
-        "microsoft" to listOf("microsoft.com", "live.com", "office.com"),
+        "microsoft" to listOf("microsoft.com", "live.com", "office.com", "outlook.com", "login.live.com"),
         "netflix" to listOf("netflix.com"),
-        "amazon" to listOf("amazon.com", "amazon.co"),
+        "amazon" to listOf("amazon.com", "amazon.co", "aws.amazon.com"),
         "chase" to listOf("chase.com"),
         "wellsfargo" to listOf("wellsfargo.com"),
+        "bankofamerica" to listOf("bankofamerica.com"),
+        "citibank" to listOf("citi.com", "citibank.com"),
+        "capitalone" to listOf("capitalone.com"),
         "binance" to listOf("binance.com"),
         "coinbase" to listOf("coinbase.com"),
+        "metamask" to listOf("metamask.io"),
+        "trustwallet" to listOf("trustwallet.com"),
         "instagram" to listOf("instagram.com"),
         "facebook" to listOf("facebook.com", "fb.com"),
         "telegram" to listOf("telegram.org", "t.me"),
-        "whatsapp" to listOf("whatsapp.com")
+        "whatsapp" to listOf("whatsapp.com"),
+        "twitter" to listOf("twitter.com", "x.com"),
+        "discord" to listOf("discord.com", "discord.gg"),
+        "steam" to listOf("steampowered.com", "steamcommunity.com"),
+        "roblox" to listOf("roblox.com"),
+        "usps" to listOf("usps.com"),
+        "fedex" to listOf("fedex.com"),
+        "dhl" to listOf("dhl.com"),
+        "ups" to listOf("ups.com"),
+        "walmart" to listOf("walmart.com"),
+        "ebay" to listOf("ebay.com")
     )
 
+    var isWhitelistedAuthority = false
+    var brandSpoofed = false
+
     for ((brand, legitDomains) in brandMap) {
-        if (lower.contains(brand)) {
-            val isLegit = legitDomains.any { lower.contains("://$it") || lower.contains(".$it") || lower.startsWith(it) }
-            if (!isLegit) {
-                riskScore += 0.80f
-                details.add("Brand spoofing: '$brand' keyword in unauthorized domain")
+        if (host.contains(brand) || lower.contains(brand)) {
+            val isLegit = legitDomains.any { host == it || host.endsWith(".$it") }
+            if (isLegit) {
+                isWhitelistedAuthority = true
+            } else {
+                brandSpoofed = true
+                riskScore += 0.85f
+                details.add("Brand Impersonation: '$brand' spoofing detected on unauthorized domain '$host'")
             }
         }
     }
 
-    // 6. Suspicious urgency or credential-theft keywords
-    val keywords = listOf(
-        "verify", "suspended", "urgent", "update-account", "security-alert",
-        "wallet-connect", "claim-bonus", "login-attempt", "confirm-identity", "free-crypto",
-        "docs", "doc", "document", "form", "forms", "invoice", "super1000", "giftvoucher"
+    // 7. Ephemeral Free Cloud Host / Tunneling Abuse (e.g. pages.dev, web.app, vercel.app)
+    val freeHostingProviders = listOf(
+        "pages.dev", "web.app", "firebaseapp.com", "vercel.app", "netlify.app",
+        "000webhostapp.com", "glitch.me", "duckdns.org", "surge.sh", "render.com",
+        "weeblysite.com", "wixsite.com", "github.io", "gitlab.io", "ngrok-free.app",
+        "trycloudflare.com", "loca.lt"
     )
-    for (kw in keywords) {
-        if (lower.contains(kw)) {
-            riskScore += 0.35f
+    val hasFreeHost = freeHostingProviders.any { host == it || host.endsWith(".$it") }
+    val lureKeywords = listOf(
+        "login", "signin", "verify", "secure", "account", "update", "bank",
+        "wallet", "claim", "prize", "auth", "kyc", "alert", "docs", "doc",
+        "document", "form", "forms", "invoice", "view", "pdf", "portal",
+        "confirm", "support", "service", "suspended", "unlock", "bonus", "reward", "winner"
+    )
+    if (hasFreeHost && lureKeywords.any { lower.contains(it) }) {
+        riskScore += 0.70f
+        details.add("Credential harvesting signature on disposable free cloud hosting domain")
+    }
+
+    // 8. Suspicious urgency or credential-theft keywords
+    for (kw in lureKeywords) {
+        if (lower.contains(kw) && !isWhitelistedAuthority) {
+            riskScore += 0.25f
             details.add("Phishing deception keyword detected: '$kw'")
             break
         }
     }
 
-    // 7. Synthetic Bait Host & Harvesting Path Detection
+    // 9. Synthetic Bait Host & Harvesting Path Detection
     val syntheticLureRegex = Regex("""(?:super|win|bonus|claim|prize|offer|lucky|gift|secure|verify|account|doc|docs|update|login)\d{2,}""")
-    if (syntheticLureRegex.containsMatchIn(lower)) {
+    if (syntheticLureRegex.containsMatchIn(lower) && !isWhitelistedAuthority) {
         riskScore += 0.55f
         details.add("Automated phishing kit pattern: synthetic bait host with numeric suffix")
     }
 
-    val pathLures = listOf("/docs", "/doc", "/form", "/forms", "/invoice", "/login", "/verify", "/claim")
-    if (pathLures.any { lower.contains(it) } && suspiciousTlds.any { lower.contains(it) }) {
+    val pathLures = listOf("/docs", "/doc", "/form", "/forms", "/invoice", "/login", "/verify", "/claim", "/wallet", "/auth")
+    if (pathLures.any { lower.contains(it) } && (hasFreeHost || suspiciousTlds.any { host.endsWith(it) })) {
         riskScore += 0.45f
-        details.add("Deceptive harvesting endpoint (/docs, /form) on high-abuse TLD")
+        details.add("Deceptive harvesting endpoint on high-abuse hosting/TLD")
     }
 
-    // 8. Excessive subdomain nesting (> 3 dots in host)
-    val hostPart = cleanUrl.replace(Regex("""^https?://"""), "").split("/")[0]
-    if (hostPart.count { it == '.' } >= 4) {
-        riskScore += 0.30f
+    // 10. Excessive subdomain nesting (> 3 dots in host)
+    if (host.count { it == '.' } >= 4 && !isWhitelistedAuthority) {
+        riskScore += 0.35f
         details.add("Excessive subdomain depth (> 3 levels)")
     }
 
-    val finalScore = riskScore.coerceIn(0.01f, 0.99f)
+    // Whitelist authority override
+    val finalScore = if (isWhitelistedAuthority && !brandSpoofed && details.isEmpty()) {
+        0.0f
+    } else {
+        riskScore.coerceIn(0.01f, 0.99f)
+    }
+
     val status = when {
         finalScore >= 0.60f -> "Phishing"
         finalScore >= 0.30f -> "Suspicious"
         else -> "Safe"
     }
 
-    if (details.isEmpty()) {
+    if (details.isEmpty() && isWhitelistedAuthority) {
+        details.add("Verified legitimate global authority domain name")
+        details.add("Authentic domain credentials and security standards")
+    } else if (details.isEmpty()) {
         details.add("Standard URL structure verified")
         details.add("No known brand spoofing or malicious signatures")
     }
@@ -1208,11 +1268,14 @@ fun URLScannerScreen(token: String = "", onBack: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
+    val urlScrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CyberBackground)
             .padding(16.dp)
+            .verticalScroll(urlScrollState)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -1288,7 +1351,17 @@ fun URLScannerScreen(token: String = "", onBack: () -> Unit) {
                         val isPhish = res.status == "Phishing" || local.status == "Phishing"
                         val isSus = !isPhish && (res.status == "Suspicious" || local.status == "Suspicious")
                         val finalStatus = if (isPhish) "Phishing" else if (isSus) "Suspicious" else "Safe"
-                        val finalScore = maxOf(local.score, res.score)
+                        
+                        // Normalize backend score from 0..100 scale down to 0.0..1.0 scale
+                        val backendScoreNormalized = if (res.score > 1.0f) (res.score / 100f).coerceIn(0.0f, 1.0f) else res.score.coerceIn(0.0f, 1.0f)
+                        val localScoreNormalized = local.score.coerceIn(0.0f, 1.0f)
+                        
+                        val finalScore = when (finalStatus) {
+                            "Safe" -> minOf(localScoreNormalized, backendScoreNormalized).coerceIn(0.0f, 0.05f)
+                            "Phishing" -> maxOf(localScoreNormalized, backendScoreNormalized, 0.88f).coerceIn(0.0f, 1.0f)
+                            else -> maxOf(localScoreNormalized, backendScoreNormalized, 0.45f).coerceIn(0.0f, 1.0f)
+                        }
+                        
                         val rec = when (finalStatus) {
                             "Phishing" -> "CRITICAL THREAT: DO NOT visit this site or input any credentials. High likelihood of credential theft or financial fraud."
                             "Suspicious" -> "CAUTION: Unverified destination with deceptive indicators. Avoid sharing passwords, 2FA codes, or private data."

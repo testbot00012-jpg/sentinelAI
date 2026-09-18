@@ -1,7 +1,7 @@
 {
   "engine": "Sentinel AI Enterprise Cyber Threat Intelligence Suite",
   "version": "2.0.0-high-accuracy",
-  "trained_at": "2026-09-17T05:18:03.211263+00:00",
+  "trained_at": "2026-09-18T05:02:04.793655+00:00",
   "models": {
     "url_phishing_detector": {
       "algorithm": "RandomForestClassifier (200 estimators, 42 features, balanced subsampling)",
@@ -12,7 +12,7 @@
         "recall": 1.0,
         "f1_score": 1.0,
         "roc_auc": 1.0,
-        "cv_5fold_mean": 0.996039603960396
+        "cv_5fold_mean": 0.9973770209838321
       }
     },
     "sms_fraud_nlp_detector": {

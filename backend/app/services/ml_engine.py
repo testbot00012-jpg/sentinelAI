@@ -172,7 +172,7 @@ class SentinelMLEngine:
             return {
                 "url": url,
                 "status": "Safe",
-                "score": 5.0,
+                "score": 0.0,
                 "details": ["Verified legitimate global authority domain name"]
             }
 
@@ -239,21 +239,48 @@ class SentinelMLEngine:
         }
         is_whitelisted = domain_lower in SAFE_DOMAINS and "@" not in url_norm and "//" not in parsed.path
 
-        # 2. Targeted Brands Spoofing & Impersonation
+        # 2. Targeted Brands Spoofing & Impersonation (Comprehensive 35+ Brands)
         BRAND_OFFICIAL_MAP = {
-            "paypal": ["paypal.com"],
+            "paypal": ["paypal.com", "paypal.me"],
             "apple": ["apple.com", "icloud.com"],
             "chase": ["chase.com"],
             "netflix": ["netflix.com"],
             "wellsfargo": ["wellsfargo.com"],
             "bankofamerica": ["bankofamerica.com"],
+            "citibank": ["citi.com", "citibank.com"],
+            "capitalone": ["capitalone.com"],
             "binance": ["binance.com"],
             "coinbase": ["coinbase.com"],
             "metamask": ["metamask.io"],
+            "trustwallet": ["trustwallet.com"],
             "steam": ["steampowered.com", "steamcommunity.com"],
-            "amazon": ["amazon.com"],
-            "microsoft": ["microsoft.com", "live.com", "office.com"],
-            "google": ["google.com", "youtube.com"]
+            "roblox": ["roblox.com"],
+            "amazon": ["amazon.com", "amazon.co", "aws.amazon.com"],
+            "microsoft": ["microsoft.com", "live.com", "office.com", "outlook.com"],
+            "google": ["google.com", "youtube.com", "google.co"],
+            "instagram": ["instagram.com"],
+            "facebook": ["facebook.com", "fb.com"],
+            "whatsapp": ["whatsapp.com"],
+            "telegram": ["telegram.org", "t.me"],
+            "twitter": ["twitter.com", "x.com"],
+            "discord": ["discord.com", "discord.gg"],
+            "usps": ["usps.com"],
+            "fedex": ["fedex.com"],
+            "dhl": ["dhl.com"],
+            "ups": ["ups.com"],
+            "walmart": ["walmart.com"],
+            "ebay": ["ebay.com"],
+            "kraken": ["kraken.com"],
+            "kucoin": ["kucoin.com"],
+            "ledger": ["ledger.com"],
+            "trezor": ["trezor.io"],
+            "revolut": ["revolut.com"],
+            "venmo": ["venmo.com"],
+            "cashapp": ["cash.app"],
+            "zelle": ["zellepay.com"],
+            "dropbox": ["dropbox.com"],
+            "adobe": ["adobe.com"],
+            "docusign": ["docusign.com"]
         }
 
         brand_spoofed = False
@@ -263,7 +290,7 @@ class SentinelMLEngine:
                 if not is_official:
                     brand_spoofed = True
                     ml_score = max(ml_score, 96.0)
-                    details.insert(0, f"Brand Impersonation: Detected spoofed brand '{brand.capitalize()}' on domain '{domain}'")
+                    details.insert(0, f"Brand Impersonation: Detected spoofed brand '{brand.capitalize()}' on unauthorized domain '{domain}'")
                     break
 
         # 3. Numeric IPv4 / IPv6 host
@@ -309,29 +336,36 @@ class SentinelMLEngine:
                 ml_score = max(ml_score, 91.5)
                 details.insert(0, f"Deceptive Harvesting Endpoint: Path '{parsed.path}' matches known credential/document phishing kits")
 
-        # 7. Ephemeral Free Tunneling / Forwarding Abuse
+        # 7. Ephemeral Free Tunneling / Forwarding Abuse & Free Hosting Kits
         TUNNEL_SERVICES = ["ngrok-free.app", "ngrok.io", "loca.lt", "trycloudflare.com", "glitch.me", "pagekite.me"]
-        if any(ts in domain_lower for ts in TUNNEL_SERVICES):
-            has_tunnel_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "bank", "account", "update"])
-            if has_tunnel_lure:
-                ml_score = max(ml_score, 92.5)
-                details.insert(0, f"Abused Cloud Tunnel: Ephemeral tunnel provider '{domain}' hosting credential phishing interface")
+        FREE_HOSTING_PROVIDERS = [
+            "pages.dev", "web.app", "firebaseapp.com", "vercel.app", "netlify.app",
+            "000webhostapp.com", "duckdns.org", "surge.sh", "render.com", "weeblysite.com",
+            "wixsite.com", "github.io", "gitlab.io"
+        ]
+        has_tunnel = any(ts in domain_lower for ts in TUNNEL_SERVICES)
+        has_free_host = any(domain_lower == fh or domain_lower.endswith("." + fh) for fh in FREE_HOSTING_PROVIDERS)
+        if has_tunnel or has_free_host:
+            has_credential_lure = any(kw in url_lower for kw in ["login", "signin", "verify", "secure", "bank", "account", "update", "wallet", "kyc", "auth", "claim"])
+            if has_credential_lure:
+                ml_score = max(ml_score, 93.0)
+                details.insert(0, f"Abused Cloud Hosting/Tunnel: Provider '{domain}' hosting credential phishing interface")
 
         # 8. Subdomain Stacking with Credential Keywords
-        if domain_lower.count(".") >= 3 and any(kw in url_lower for kw in ["login", "signin", "verify", "bank"]):
-            ml_score = max(ml_score, 88.0)
+        if domain_lower.count(".") >= 3 and any(kw in url_lower for kw in ["login", "signin", "verify", "bank", "secure", "account"]):
+            ml_score = max(ml_score, 89.0)
             details.append("Excessive Subdomains: Host contains 4+ domain levels attempting visual authority masking")
 
         # Apply whitelist suppression
         if is_whitelisted and not brand_spoofed:
-            final_score = 5.0
+            final_score = 0.0
             status = "Safe"
             details = ["Verified legitimate global authority domain name"]
         else:
-            final_score = round(min(max(ml_score, 5.0), 99.0), 1)
-            if final_score < 40.0:
+            final_score = round(min(max(ml_score, 0.0), 99.0), 1)
+            if final_score < 35.0:
                 status = "Safe"
-            elif final_score < 70.0:
+            elif final_score < 68.0:
                 status = "Suspicious"
             else:
                 status = "Phishing"

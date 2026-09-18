@@ -20,15 +20,18 @@ SUSPICIOUS_TLDS = {
     "country", "bid", "loan", "date", "racing", "win", "download", 
     "accountant", "science", "party", "review", "trade", "webcam", "faith",
     "info", "site", "space", "shop", "cfd", "sbs", "bond", "lat", "monster",
-    "link", "skin", "autos", "hair", "makeup", "beauty", "quest", "agency", "cc", "pro"
+    "link", "skin", "autos", "hair", "makeup", "beauty", "quest", "agency", "cc", "pro",
+    "support", "app", "zone", "services", "center", "ltd"
 }
 
 # Major targeted brands frequently spoofed in phishing
 TARGET_BRANDS = [
     "paypal", "apple", "google", "microsoft", "amazon", "netflix", "chase", 
     "bankofamerica", "wellsfargo", "citibank", "capitalone", "binance", 
-    "coinbase", "metamask", "instagram", "facebook", "whatsapp", "telegram",
-    "twitter", "discord", "steam", "walmart", "usps", "fedex", "dhl", "ups"
+    "coinbase", "metamask", "trustwallet", "instagram", "facebook", "whatsapp", "telegram",
+    "twitter", "discord", "steam", "roblox", "ebay", "walmart", "target", "usps", "fedex", "dhl", "ups",
+    "kraken", "kucoin", "ledger", "trezor", "revolut", "venmo", "cashapp", "zelle",
+    "pnc", "santander", "barclays", "hsbc", "dropbox", "adobe", "docusign", "zoom", "tiktok", "linkedin"
 ]
 
 # Sensitive credentials & lure keywords in URLs
@@ -39,7 +42,9 @@ SUSPICIOUS_URL_KEYWORDS = [
     "portal", "verify", "identity", "validate", "token", "session", "passcode",
     "unlock", "restore", "suspended", "alert", "notice", "claim", "prize",
     "docs", "doc", "document", "documents", "form", "forms", "invoice", "view",
-    "super", "bonus", "winner", "reward", "gift", "airdrop", "office365", "docusign"
+    "super", "bonus", "winner", "reward", "gift", "airdrop", "office365", "docusign",
+    "paypa1", "arnazon", "goog1e", "app1e", "netflixx", "wha7sapp", "faceb00k", "instagrarn",
+    "kyc", "credential", "seed-phrase", "private-key", "resolve", "reactivate", "restricted"
 ]
 
 # High-risk SMS psycholinguistic dictionaries
@@ -236,13 +241,24 @@ def extract_url_features(url: str) -> List[float]:
     # 41: Client credential lure token
     has_client_spoof = 1.0 if any(t in url_lower for t in ["signin", "login", "verify", "password", "wallet"]) else 0.0
 
-    # 42: Brand-in-subdomain spoofing
-    # e.g., paypal.com.attacker.xyz or apple-id.verification.top
+    # 42: Brand spoofing in domain or subdomain
+    # e.g., paypal.com.attacker.xyz or paypal-security.xyz or appleid-verification.top
     brand_spoofed = 0.0
-    if len(parts) > 2:
-        subdomain_str = ".".join(parts[:-2])
-        if any(brand in subdomain_str for brand in TARGET_BRANDS):
-            brand_spoofed = 1.0
+    for brand in TARGET_BRANDS:
+        if brand in domain_clean:
+            is_authentic = (
+                domain_clean == f"{brand}.com" or 
+                domain_clean == f"www.{brand}.com" or
+                domain_clean.endswith(f".{brand}.com") or 
+                domain_clean.endswith(f".{brand}.org") or
+                domain_clean.endswith(f".{brand}.io") or 
+                domain_clean.endswith(f".{brand}.net") or
+                domain_clean.endswith(f".{brand}.co") or
+                domain_clean.endswith(f".{brand}.me")
+            )
+            if not is_authentic:
+                brand_spoofed = 1.0
+                break
 
     return [
         url_len, domain_len, path_len, query_len,
