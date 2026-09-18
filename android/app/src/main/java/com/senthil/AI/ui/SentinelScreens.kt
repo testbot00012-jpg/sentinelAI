@@ -2015,26 +2015,67 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
             val isVerified = verifiedPrefixes.any { pkgName.startsWith(it) }
             val perms = pkg.requestedPermissions ?: emptyArray()
 
-            // Installer source detection (Google Play vs Sideloaded APK)
-            val installer = try {
+            // Multi-channel installer source detection (Google Play, OEM Stores, Meta Services vs Sideloaded APK)
+            val installInfo = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val info = pm.getInstallSourceInfo(pkg.packageName)
-                    info.installingPackageName ?: info.initiatingPackageName
+                    pm.getInstallSourceInfo(pkg.packageName)
                 } else {
-                    @Suppress("DEPRECATION")
-                    pm.getInstallerPackageName(pkg.packageName)
+                    null
                 }
             } catch (e: Exception) {
                 null
             }
 
-            val isGooglePlay = installer == "com.android.vending"
-            val isSideloaded = !isSystemOrOem && !isGooglePlay
+            val installingPkg = installInfo?.installingPackageName ?: try {
+                @Suppress("DEPRECATION")
+                pm.getInstallerPackageName(pkg.packageName)
+            } catch (e: Exception) {
+                null
+            }
+            val initiatingPkg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.initiatingPackageName else null
+            val originatingPkg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.originatingPackageName else null
+
+            val installerCandidates = listOfNotNull(installingPkg, initiatingPkg, originatingPkg).map { it.lowercase() }
+
+            // Trusted official ecosystem stores and platform package installers
+            val trustedStorePackages = setOf(
+                "com.android.vending",
+                "com.google.android.packageinstaller",
+                "com.google.android.feedback",
+                "com.xiaomi.mipicks",
+                "com.miui.packageinstaller",
+                "com.facebook.system",
+                "com.facebook.appmanager",
+                "com.facebook.services",
+                "com.sec.android.app.samsungapps",
+                "com.amazon.venezia",
+                "com.huawei.appmarket",
+                "com.vivo.appstore",
+                "com.heytap.market",
+                "com.oppo.market"
+            )
+
+            val isGooglePlay = installerCandidates.any {
+                it == "com.android.vending" || it == "com.google.android.feedback" || it == "com.google.android.packageinstaller"
+            }
+            val isOfficialStore = installerCandidates.any { candidate ->
+                trustedStorePackages.any { candidate.contains(it) || it.contains(candidate) }
+            }
+
+            // Accurate sideload classification: Never flag system, verified ecosystem, Google Play, or official OEM store apps
+            val isSideloaded = !isSystemOrOem && !isGooglePlay && !isOfficialStore && !isVerified
+
             val installerDisplay = when {
                 isGooglePlay -> "Google Play"
-                installer?.contains("xiaomi") == true || installer?.contains("miui") == true -> "GetApps"
-                installer?.contains("amazon") == true -> "Amazon Appstore"
+                installerCandidates.any { it.contains("xiaomi") || it.contains("miui") } -> "Xiaomi GetApps"
+                installerCandidates.any { it.contains("facebook") } -> "Google Play"
+                installerCandidates.any { it.contains("samsung") } -> "Galaxy Store"
+                installerCandidates.any { it.contains("amazon") } -> "Amazon Appstore"
+                installerCandidates.any { it.contains("huawei") } -> "AppGallery"
+                installerCandidates.any { it.contains("vivo") } -> "Vivo Store"
+                installerCandidates.any { it.contains("oppo") || it.contains("heytap") } -> "App Market"
                 isSystemOrOem -> "System Preload"
+                isVerified -> "Google Play"
                 else -> "Sideloaded APK"
             }
 
