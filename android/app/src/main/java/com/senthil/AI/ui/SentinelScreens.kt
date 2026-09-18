@@ -2026,58 +2026,93 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                 null
             }
 
-            val installingPkg = installInfo?.installingPackageName ?: try {
+            val installingPkg = (installInfo?.installingPackageName ?: try {
                 @Suppress("DEPRECATION")
                 pm.getInstallerPackageName(pkg.packageName)
             } catch (e: Exception) {
                 null
-            }
-            val initiatingPkg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.initiatingPackageName else null
-            val originatingPkg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.originatingPackageName else null
+            })?.lowercase()
+            val initiatingPkg = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.initiatingPackageName else null)?.lowercase()
+            val originatingPkg = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) installInfo?.originatingPackageName else null)?.lowercase()
 
-            val installerCandidates = listOfNotNull(installingPkg, initiatingPkg, originatingPkg).map { it.lowercase() }
+            val installerCandidates = listOfNotNull(installingPkg, initiatingPkg, originatingPkg)
 
-            // Trusted official ecosystem stores and platform package installers
-            val trustedStorePackages = setOf(
-                "com.android.vending",
-                "com.google.android.packageinstaller",
-                "com.google.android.feedback",
-                "com.xiaomi.mipicks",
-                "com.miui.packageinstaller",
-                "com.facebook.system",
-                "com.facebook.appmanager",
-                "com.facebook.services",
-                "com.sec.android.app.samsungapps",
-                "com.amazon.venezia",
-                "com.huawei.appmarket",
-                "com.vivo.appstore",
-                "com.heytap.market",
-                "com.oppo.market"
-            )
-
+            // 1. Google Play Store (Strict: com.android.vending or com.google.android.feedback)
+            // Note: com.google.android.packageinstaller is the system APK installer dialog for manual sideloads, NOT Google Play!
             val isGooglePlay = installerCandidates.any {
-                it == "com.android.vending" || it == "com.google.android.feedback" || it == "com.google.android.packageinstaller"
-            }
-            val isOfficialStore = installerCandidates.any { candidate ->
-                trustedStorePackages.any { candidate.contains(it) || it.contains(candidate) }
+                it == "com.android.vending" || it == "com.google.android.feedback"
             }
 
-            // Accurate sideload classification: Never flag system, verified ecosystem, Google Play, or official OEM store apps
-            val isSideloaded = !isSystemOrOem && !isGooglePlay && !isOfficialStore && !isVerified
+            // 2. Xiaomi Official Stores (GetApps / Discover)
+            val isXiaomiStore = installerCandidates.any {
+                it == "com.xiaomi.mipicks" || it == "com.xiaomi.discover"
+            }
+
+            // 3. Meta App Services (Official OEM preload/update channel for Facebook, Instagram)
+            val isMetaServices = installerCandidates.any {
+                it == "com.facebook.system" || it == "com.facebook.appmanager" || it == "com.facebook.services"
+            }
+
+            // 4. Samsung Galaxy Store
+            val isSamsungStore = installerCandidates.any {
+                it == "com.sec.android.app.samsungapps"
+            }
+
+            // 5. Amazon Appstore
+            val isAmazonStore = installerCandidates.any {
+                it == "com.amazon.venezia"
+            }
+
+            // 6. Huawei AppGallery
+            val isHuaweiStore = installerCandidates.any {
+                it == "com.huawei.appmarket"
+            }
+
+            // 7. Vivo App Store
+            val isVivoStore = installerCandidates.any {
+                it == "com.vivo.appstore" || it == "com.bbk.appstore"
+            }
+
+            // 8. Oppo / Realme App Market
+            val isOppoStore = installerCandidates.any {
+                it == "com.oppo.market" || it == "com.heytap.market" || it == "com.plus.market"
+            }
+
+            // 9. Indus Appstore
+            val isIndusStore = installerCandidates.any {
+                it == "com.indus.appstore"
+            }
+
+            // 10. Web APK (PWA)
+            val isWebApk = pkgName.startsWith("org.chromium.webapk.") ||
+                           (installingPkg == "com.android.chrome" && pkgName.contains("webapk"))
+
+            val isOfficialStore = isGooglePlay || isXiaomiStore || isMetaServices || isSamsungStore ||
+                                  isAmazonStore || isHuaweiStore || isVivoStore || isOppoStore || isIndusStore || isWebApk
+
+            // Accurate Sideload Classification:
+            // An app is sideloaded if it is NOT a pre-installed system/OEM app and was NOT installed from an official app store.
+            // (e.g. installed via com.google.android.packageinstaller, com.android.packageinstaller,
+            // com.miui.packageinstaller, com.android.shell, Chrome, Telegram, WhatsApp, file managers, or null)
+            val isSideloaded = !isSystemOrOem && !isOfficialStore
 
             val installerDisplay = when {
                 isGooglePlay -> "Google Play"
-                installerCandidates.any { it.contains("xiaomi") || it.contains("miui") } -> "Xiaomi GetApps"
-                installerCandidates.any { it.contains("facebook") } -> "Google Play"
-                installerCandidates.any { it.contains("samsung") } -> "Galaxy Store"
-                installerCandidates.any { it.contains("amazon") } -> "Amazon Appstore"
-                installerCandidates.any { it.contains("huawei") } -> "AppGallery"
-                installerCandidates.any { it.contains("vivo") } -> "Vivo Store"
-                installerCandidates.any { it.contains("oppo") || it.contains("heytap") } -> "App Market"
+                isXiaomiStore -> "Xiaomi GetApps"
+                isMetaServices -> "Google Play / Meta"
+                isSamsungStore -> "Galaxy Store"
+                isAmazonStore -> "Amazon Appstore"
+                isHuaweiStore -> "AppGallery"
+                isVivoStore -> "Vivo Store"
+                isOppoStore -> "App Market"
+                isIndusStore -> "Indus Appstore"
+                isWebApk -> "Web App (PWA)"
                 isSystemOrOem -> "System Preload"
-                isVerified -> "Google Play"
                 else -> "Sideloaded APK"
             }
+
+            // Only store-installed or system apps matching recognized official developers are verified ecosystem apps
+            val isVerifiedEcosystem = !isSideloaded && isVerified
 
             val appName = appInfo.loadLabel(pm).toString()
 
@@ -2087,7 +2122,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                 "state bank of india", "sbi yono", "yono sbi", "paytm", "phonepe", "google pay", "gpay",
                 "hdfc bank", "icici imobile", "axis mobile", "kotak 811", "bhim upi", "cred", "swiggy", "zomato"
             ).any { appNameLower.contains(it) }
-            val isFakeClone = !isSystemOrOem && isKnownBrandClaim && !isVerified
+            val isFakeClone = !isSystemOrOem && isKnownBrandClaim && !isVerifiedEcosystem
 
             var hasAccessibility = false
             var hasDeviceAdmin = false
@@ -2124,27 +2159,30 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                 isFakeClone -> Triple(95, "CRITICAL: FAKE APP CLONE", CyberDanger)
 
                 // Real Critical Threat: Accessibility or Device Admin in unverified apps, or unverified overlay + SMS
-                hasAccessibility && !isVerified -> Triple(85, "CRITICAL RISK", CyberDanger)
-                hasDeviceAdmin && !isVerified -> Triple(80, "CRITICAL RISK", CyberDanger)
-                !isVerified && hasOverlay && hasSms -> Triple(75, "CRITICAL RISK", CyberDanger)
+                hasAccessibility && !isVerifiedEcosystem -> Triple(85, "CRITICAL RISK", CyberDanger)
+                hasDeviceAdmin && !isVerifiedEcosystem -> Triple(80, "CRITICAL RISK", CyberDanger)
+                !isVerifiedEcosystem && hasOverlay && hasSms -> Triple(75, "CRITICAL RISK", CyberDanger)
                 isSideloaded && (hasOverlay || hasSms || hasAccessibility) -> Triple(65, "HIGH RISK (SIDELOADED)", CyberDanger)
 
                 // High Risk: Unverified apps requesting overlay or call logs or SMS
-                !isVerified && hasOverlay -> Triple(55, "HIGH RISK", CyberWarning)
-                !isVerified && hasCallLogs -> Triple(50, "HIGH RISK", CyberWarning)
-                !isVerified && hasSms -> Triple(45, "HIGH RISK", CyberWarning)
-                !isVerified && hasMic && hasLocation -> Triple(40, "HIGH RISK", CyberWarning)
+                !isVerifiedEcosystem && hasOverlay -> Triple(55, "HIGH RISK", CyberWarning)
+                !isVerifiedEcosystem && hasCallLogs -> Triple(50, "HIGH RISK", CyberWarning)
+                !isVerifiedEcosystem && hasSms -> Triple(45, "HIGH RISK", CyberWarning)
+                !isVerifiedEcosystem && hasMic && hasLocation -> Triple(40, "HIGH RISK", CyberWarning)
 
                 // Medium Risk: Unverified app requesting sensitive sensors
-                !isVerified && (hasCamera || hasMic || hasLocation || hasContacts) -> Triple(25, "MEDIUM RISK", Color(0xFFFFD54F))
+                !isVerifiedEcosystem && (hasCamera || hasMic || hasLocation || hasContacts) -> Triple(25, "MEDIUM RISK", Color(0xFFFFD54F))
+
+                // Sideloaded app with standard permissions (unverified external source)
+                isSideloaded -> Triple(15, "SIDELOADED (UNVERIFIED)", Color(0xFFFFD54F))
 
                 // Verified top-tier ecosystem app with system overlay or telephony (e.g. Truecaller)
-                isVerified && (hasOverlay || hasCallLogs || hasAccessibility) -> Triple(15, "MONITORED (SYSTEM PRIVILEGES)", CyberPrimary)
+                isVerifiedEcosystem && (hasOverlay || hasCallLogs || hasAccessibility) -> Triple(15, "MONITORED (SYSTEM PRIVILEGES)", CyberPrimary)
 
                 // Verified app with standard permissions (Swiggy, WhatsApp, Paytm, Airtel, etc.)
-                isVerified -> Triple(5, "VERIFIED SAFE", CyberSuccess)
+                isVerifiedEcosystem -> Triple(5, "VERIFIED SAFE", CyberSuccess)
 
-                // Other standard apps
+                // Other standard store/system apps
                 else -> Triple(0, "CLEAN / SAFE", CyberSuccess)
             }
 
@@ -2156,7 +2194,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                     riskLevel = level,
                     riskColor = color,
                     isSystemOrOem = isSystemOrOem,
-                    isVerifiedEcosystem = isVerified,
+                    isVerifiedEcosystem = isVerifiedEcosystem,
                     permissions = if (flagged.isNotEmpty()) flagged.distinct() else listOf("Standard Safe Permissions"),
                     installerSource = installerDisplay,
                     isSideloaded = isSideloaded,
@@ -2401,7 +2439,7 @@ fun PermissionAnalyzerScreen(onBack: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = if (app.isSideloaded) "SIDELOADED" else app.installerSource,
+                                    text = if (app.isSideloaded) "SIDELOADED APK" else app.installerSource,
                                     color = if (app.isSideloaded) CyberWarning else Color.DarkGray,
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
