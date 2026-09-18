@@ -1,0 +1,19 @@
+{
+  "name": "sentinel-ai-selenium-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive Selenium WebDriver E2E test suite for Sentinel AI Web Frontend",
+  "main": "tests/login-tests.js",
+  "scripts": {
+    "test": "node tests/login-tests.js",
+    "generate-report": "python generate_test_report.py"
+  },
+  "keywords": ["selenium", "webdriver", "e2e", "testing", "sentinel-ai"],
+  "author": "Sentinel AI QA Team",
+  "license": "ISC",
+  "dependencies": {
+    "selenium-webdriver": "^4.20.0"
+  },
+  "devDependencies": {
+    "chromedriver": "^120.0.0"
+  }
+}

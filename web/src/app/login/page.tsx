@@ -122,13 +122,13 @@ export default function LoginPage() {
 
         {/* Error Banner */}
         {error && (
-          <div className="mb-5 rounded-xl border border-danger/30 bg-danger/8 overflow-hidden">
+          <div id="error-banner" data-testid="error-banner" className="mb-5 rounded-xl border border-danger/30 bg-danger/8 overflow-hidden">
             <div className="flex items-start gap-3 p-4">
               <AlertCircle className="w-5 h-5 text-danger shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm text-danger font-semibold">{error.message}</p>
+                <p id="error-message" data-testid="error-message" className="text-sm text-danger font-semibold">{error.message}</p>
                 {error.hint && (
-                  <p className="text-xs text-danger/70 mt-1 leading-relaxed">{error.hint}</p>
+                  <p id="error-hint" data-testid="error-hint" className="text-xs text-danger/70 mt-1 leading-relaxed">{error.hint}</p>
                 )}
               </div>
             </div>
@@ -137,6 +137,8 @@ export default function LoginPage() {
               <div className="border-t border-danger/20 bg-white/3 px-4 py-3 flex items-center justify-between">
                 <span className="text-xs text-gray-400">Don't have an account?</span>
                 <Link
+                  id="suggestion-register-link"
+                  data-testid="suggestion-register-link"
                   href="/register"
                   className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors"
                 >
@@ -149,15 +151,18 @@ export default function LoginPage() {
         )}
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id="login-form" data-testid="login-form" onSubmit={handleSubmit} className="space-y-5">
           {/* Email */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+            <label htmlFor="email" className="text-xs font-bold text-gray-400 uppercase tracking-wider">
               Access Email
             </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary" />
               <input
+                id="email"
+                name="email"
+                data-testid="email-input"
                 type="email"
                 required
                 value={formData.email}
@@ -171,10 +176,12 @@ export default function LoginPage() {
           {/* Password */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <label htmlFor="password" className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Access Password
               </label>
               <button
+                id="reset-key-button"
+                data-testid="reset-key-button"
                 type="button"
                 className="text-xs text-secondary hover:text-secondary/80 transition-colors font-medium"
               >
@@ -184,6 +191,9 @@ export default function LoginPage() {
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary" />
               <input
+                id="password"
+                name="password"
+                data-testid="password-input"
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={formData.password}
@@ -192,9 +202,12 @@ export default function LoginPage() {
                 className="w-full bg-[#0b1329] border border-cyan-500/30 rounded-xl pl-11 pr-12 py-3 text-sm text-white font-bold font-mono focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-gray-500 shadow-inner tracking-wider"
               />
               <button
+                id="toggle-password"
+                data-testid="toggle-password"
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors p-1"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -203,6 +216,8 @@ export default function LoginPage() {
 
           {/* Submit */}
           <button
+            id="login-button"
+            data-testid="login-button"
             type="submit"
             disabled={loading}
             className="w-full py-3.5 bg-primary text-background font-extrabold rounded-xl shadow-neon hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 text-sm uppercase tracking-widest disabled:opacity-60 disabled:cursor-not-allowed"
@@ -225,7 +240,7 @@ export default function LoginPage() {
         <div className="mt-8 pt-6 border-t border-white/5 text-center">
           <p className="text-xs text-gray-500">
             New to Sentinel AI?{' '}
-            <Link href="/register" className="text-primary hover:text-primary/80 font-bold transition-colors">
+            <Link id="register-link" data-testid="register-link" href="/register" className="text-primary hover:text-primary/80 font-bold transition-colors">
               Establish Access Credentials →
             </Link>
           </p>
