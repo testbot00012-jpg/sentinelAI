@@ -1,0 +1,105 @@
+name: Enterprise Backend Security Review & DevSecOps Audit
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  security-assessment:
+    name: Universal Backend Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: 📥 Checkout Codebase
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "backend/requirements.txt"
+
+      - name: 📦 Install Security Scanners & Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl bandit semgrep gitleaks pip-audit httpx
+          if [ -f backend/requirements.txt ]; then
+            pip install -r backend/requirements.txt
+          fi
+
+      - name: 🔍 Phase 1 - Universal Backend Technology Detection
+        id: detect_tech
+        run: |
+          python security_tools/tech_detector.py > tech_info.json
+          cat tech_info.json
+          LANG=$(python -c "import json; print(json.load(open('tech_info.json'))['language'])")
+          FRAMEWORK=$(python -c "import json; print(json.load(open('tech_info.json'))['framework'])")
+          echo "DETECTED_LANG=$LANG" >> $GITHUB_ENV
+          echo "DETECTED_FRAMEWORK=$FRAMEWORK" >> $GITHUB_ENV
+
+      - name: 🛡️ Phase 2 - Static Application Security Testing (SAST)
+        run: |
+          echo "Running Bandit SAST..."
+          bandit -r backend/app -f custom --msg-template "{abspath}:{line}: {test_id}[{severity}]: {msg}" || true
+          echo "Running Semgrep SAST..."
+          semgrep --config=p/security-audit --config=p/secrets --config=p/owasp-top-ten backend/app --json -o semgrep-results.json || true
+
+      - name: 🔎 Phase 3 - Software Composition Analysis (Dependency Scan)
+        run: |
+          echo "Auditing dependencies with pip-audit..."
+          if [ -f backend/requirements.txt ]; then
+            pip-audit -r backend/requirements.txt --format json -o pip-audit-results.json || true
+          fi
+
+      - name: ⚡ Phase 4 - Dynamic API Security Testing (DAST)
+        run: |
+          echo "Executing automated DAST API security checks across 300+ test assertions..."
+          python security_tools/dast_scanner.py || true
+
+      - name: 📊 Phase 5 - Report & Excel Spreadsheet Generation
+        run: |
+          echo "Compiling all executive summaries, technical reviews, and 4-sheet Excel workbooks..."
+          python security_tools/generate_reports.py
+
+      - name: 📝 Phase 6 - Publish GitHub Step Summary
+        run: |
+          echo "## 🛡️ Sentinel AI DevSecOps Security Audit Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Detected Stack**: $DETECTED_LANG ($DETECTED_FRAMEWORK)" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Trigger**: ${{ github.event_name }} by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "Vulnerability Test Results/executive-summary.md" >> $GITHUB_STEP_SUMMARY
+
+      - name: 📤 Phase 7 - Upload Security Deliverables as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vulnerability-Test-Results
+          path: Vulnerability Test Results/
+          retention-days: 30
+
+      - name: 🚨 Phase 8 - Enforcement: Fail Only on Critical Vulnerabilities
+        run: |
+          python -c "
+          import sys, os
+          from security_tools.generate_reports import FINDINGS
+          crit_count = len([f for f in FINDINGS if f['severity'] == 'Critical'])
+          print(f'Critical Vulnerabilities Detected: {crit_count}')
+          if crit_count > 0:
+              print(f'❌ Security Gate Failed: {crit_count} Critical vulnerabilities must be remediated.')
+              sys.exit(1)
+          else:
+              print('✅ Security Gate Passed: Zero Critical vulnerabilities.')
+              sys.exit(0)
+          "
