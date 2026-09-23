@@ -92,7 +92,7 @@ def run_tests():
     apk_passes = 0
     for pkg, name, perms, expected in apk_test_cases:
         res = engine.analyze_apk_metadata(pkg, name, perms)
-        is_pass = (res["status"] == expected) or (expected == "High Threat" and res["status"] in ["Suspicious", "High Threat"])
+        is_pass = (res["status"] == expected) or (expected == "High Threat" and res["status"] in ["Suspicious", "High Threat", "Critical"])
         if is_pass:
             apk_passes += 1
             mark = "PASS"

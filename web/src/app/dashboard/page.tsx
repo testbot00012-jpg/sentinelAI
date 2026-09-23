@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Shield, Terminal, AlertOctagon, Activity, 
   CheckCircle2, RefreshCw, Bot, CreditCard, Sparkles,
-  Globe, MessageSquare, ShieldCheck, ExternalLink
+  Globe, MessageSquare, ShieldCheck, ExternalLink, Trash2
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { apiUrl } from '@/lib/api';
@@ -17,15 +17,18 @@ export default function Dashboard() {
   const { token, user } = useAuthStore();
   const [metrics, setMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clearingAll, setClearingAll] = useState(false);
 
   const fetchMetrics = useCallback(async (isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
+      const effectiveEmail = user?.email || (typeof window !== 'undefined' ? (localStorage.getItem('sentinel_email') || localStorage.getItem('user_email')) : '') || '';
       const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || 'local_authenticated_agent'}`
       };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      if (user?.email) headers['X-User-Email'] = user.email;
+      if (effectiveEmail) headers['X-User-Email'] = effectiveEmail;
 
       const res = await fetch(apiUrl('/api/analytics/metrics'), { headers });
       if (res.ok) {
@@ -65,6 +68,81 @@ export default function Dashboard() {
       window.removeEventListener('focus', handleFocus);
     };
   }, [fetchMetrics]);
+
+  const handleDeleteHistoryItem = async (id: string) => {
+    if (!id || deletingId) return;
+    setDeletingId(id);
+
+    // Immediate optimistic update for fast UX
+    setMetrics((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        recent_threats: prev.recent_threats?.filter((t: any) => t.id !== id) || [],
+        recent_scans: prev.recent_scans?.filter((s: any) => s.id !== id) || [],
+      };
+    });
+
+    try {
+      const effectiveEmail = user?.email || (typeof window !== 'undefined' ? (localStorage.getItem('sentinel_email') || localStorage.getItem('user_email')) : '') || '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || 'local_authenticated_agent'}`
+      };
+      if (effectiveEmail) headers['X-User-Email'] = effectiveEmail;
+
+      await fetch(apiUrl(`/api/scan/history/${id}`), {
+        method: 'DELETE',
+        headers
+      });
+      await fetchMetrics(false);
+    } catch (e) {
+      console.error('Failed to delete history item:', e);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleClearAllHistory = async () => {
+    if (clearingAll) return;
+    const confirmed = window.confirm("Are you sure you want to clear all scan history and recorded threats? This will also remove them from your synchronized mobile app.");
+    if (!confirmed) return;
+
+    setClearingAll(true);
+    // Immediate optimistic update
+    setMetrics((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        recent_threats: [],
+        recent_scans: [],
+        summary: {
+          ...prev.summary,
+          total_scans: 0,
+          threats_blocked: 0
+        }
+      };
+    });
+
+    try {
+      const effectiveEmail = user?.email || (typeof window !== 'undefined' ? (localStorage.getItem('sentinel_email') || localStorage.getItem('user_email')) : '') || '';
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || 'local_authenticated_agent'}`
+      };
+      if (effectiveEmail) headers['X-User-Email'] = effectiveEmail;
+
+      await fetch(apiUrl('/api/scan/history'), {
+        method: 'DELETE',
+        headers
+      });
+      await fetchMetrics(false);
+    } catch (e) {
+      console.error('Failed to clear history:', e);
+    } finally {
+      setClearingAll(false);
+    }
+  };
 
   const quickActions = [
     { label: 'AI Intel Chat', icon: Bot, href: '/dashboard/chat', color: 'text-primary', bg: 'bg-primary/10 border-primary/20 hover:border-primary/50' },
@@ -119,7 +197,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <h3 className="font-extrabold text-white text-base">Sentinel AI Intelligence Assistant</h3>
               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-secondary/20 text-secondary border border-secondary/30">
-                Groq Llama-3.3 70B
+                Local Neural LLM v2.5
               </span>
             </div>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -295,12 +373,24 @@ export default function Dashboard() {
             <h3 className="font-bold text-sm text-white">Live Detected Threats</h3>
             <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-0.5 rounded font-mono">Real-time MongoDB Atlas</span>
           </div>
-          <button
-            onClick={() => fetchMetrics(false)}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-primary transition-colors"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {recentThreats.length > 0 && (
+              <button
+                onClick={handleClearAllHistory}
+                disabled={clearingAll}
+                className="flex items-center gap-1 text-[11px] text-danger hover:bg-danger/10 px-2.5 py-1 rounded-lg border border-danger/20 transition-all font-semibold"
+                title="Clear all scans and threats from cloud & mobile"
+              >
+                <Trash2 className="w-3 h-3" /> Clear All Threats
+              </button>
+            )}
+            <button
+              onClick={() => fetchMetrics(false)}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-primary transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
+          </div>
         </div>
         <table className="w-full text-left text-sm">
           <thead>
@@ -310,12 +400,13 @@ export default function Dashboard() {
               <th className="pb-3 hidden md:table-cell">Targeted Vector / Destination</th>
               <th className="pb-3">Confidence Score</th>
               <th className="pb-3">Shield Action</th>
+              <th className="pb-3 text-right pr-2">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {recentThreats.length > 0 ? (
               recentThreats.map((log: any, i: number) => (
-                <tr key={i} className="hover:bg-white/2 transition-colors">
+                <tr key={log.id || i} className="hover:bg-white/2 transition-colors">
                   <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{log.time}</td>
                   <td className="py-3.5">
                     <span className={`px-2.5 py-1 text-xs font-bold rounded ${log.severity === 'danger' ? 'bg-danger/15 text-danger border border-danger/30' : 'bg-warning/15 text-warning border border-warning/30'}`}>
@@ -329,11 +420,21 @@ export default function Dashboard() {
                       <AlertOctagon className="w-3.5 h-3.5" /> Blocked
                     </span>
                   </td>
+                  <td className="py-3.5 text-right pr-2">
+                    <button
+                      onClick={() => handleDeleteHistoryItem(log.id)}
+                      disabled={deletingId === log.id}
+                      title="Delete threat record (syncs across web & app)"
+                      className="p-1 text-gray-500 hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                    >
+                      <Trash2 className={`w-3.5 h-3.5 ${deletingId === log.id ? 'animate-spin' : ''}`} />
+                    </button>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-500 font-mono text-xs">
+                <td colSpan={6} className="py-8 text-center text-gray-500 font-mono text-xs">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <CheckCircle2 className="w-6 h-6 text-success/70" />
                     <span>No threats recorded in your account yet. All scanned destinations are clean.</span>
@@ -353,12 +454,30 @@ export default function Dashboard() {
             <h3 className="font-bold text-sm text-white">Recent Real-Time Scans</h3>
             <span className="text-[10px] bg-white/5 text-gray-400 px-2 py-0.5 rounded font-mono">Syncing Across Web & App</span>
           </div>
-          <Link
-            href="/dashboard/scanner"
-            className="flex items-center gap-1 text-xs text-primary hover:underline font-semibold"
-          >
-            New Scan <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center gap-3">
+            {recentScans.length > 0 && (
+              <button
+                onClick={handleClearAllHistory}
+                disabled={clearingAll}
+                className="flex items-center gap-1 text-[11px] text-danger hover:bg-danger/10 px-2.5 py-1 rounded-lg border border-danger/20 transition-all font-semibold"
+                title="Clear all scans from cloud & mobile"
+              >
+                <Trash2 className="w-3 h-3" /> Clear Scans
+              </button>
+            )}
+            <Link
+              href="/dashboard/history"
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-primary transition-colors"
+            >
+              Full History
+            </Link>
+            <Link
+              href="/dashboard/scanner"
+              className="flex items-center gap-1 text-xs text-primary hover:underline font-semibold"
+            >
+              New Scan <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
         <table className="w-full text-left text-sm">
           <thead>
@@ -368,6 +487,7 @@ export default function Dashboard() {
               <th className="pb-3">Verdict Status</th>
               <th className="pb-3">Risk Score</th>
               <th className="pb-3">Access Action</th>
+              <th className="pb-3 text-right pr-2">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -375,7 +495,7 @@ export default function Dashboard() {
               recentScans.map((scan: any, i: number) => {
                 const isThreat = scan.status === 'Phishing' || scan.status === 'Suspicious';
                 return (
-                  <tr key={i} className="hover:bg-white/2 transition-colors">
+                  <tr key={scan.id || i} className="hover:bg-white/2 transition-colors">
                     <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{scan.time}</td>
                     <td className="py-3.5 text-xs text-white font-mono truncate max-w-[280px]">{scan.url}</td>
                     <td className="py-3.5">
@@ -390,12 +510,22 @@ export default function Dashboard() {
                         {scan.action}
                       </span>
                     </td>
+                    <td className="py-3.5 text-right pr-2">
+                      <button
+                        onClick={() => handleDeleteHistoryItem(scan.id)}
+                        disabled={deletingId === scan.id}
+                        title="Delete scan record (syncs across web & app)"
+                        className="p-1 text-gray-500 hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                      >
+                        <Trash2 className={`w-3.5 h-3.5 ${deletingId === scan.id ? 'animate-spin' : ''}`} />
+                      </button>
+                    </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-gray-500 font-mono text-xs">
+                <td colSpan={6} className="py-8 text-center text-gray-500 font-mono text-xs">
                   No scan history recorded yet. Enter a URL or SMS to perform your first scan.
                 </td>
               </tr>

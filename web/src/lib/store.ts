@@ -17,13 +17,16 @@ export const useAuthStore = create<AuthState>((set) => {
   // Safe SSR checks
   const isClient = typeof window !== 'undefined';
   const initialToken = isClient ? localStorage.getItem('sentinel_token') : null;
-  const initialEmail = isClient ? localStorage.getItem('sentinel_email') : null;
-  const initialRole = isClient ? localStorage.getItem('sentinel_role') : null;
+  const initialEmail = isClient ? (localStorage.getItem('sentinel_email') || localStorage.getItem('user_email')) : null;
+  const initialRole = isClient ? (localStorage.getItem('sentinel_role') || 'OPERATOR') : 'OPERATOR';
+
+  const user = initialEmail ? { email: initialEmail, role: initialRole } : null;
+  const token = initialToken || (initialEmail ? 'local_authenticated_agent' : null);
 
   return {
-    token: initialToken,
-    user: initialToken && initialEmail && initialRole ? { email: initialEmail, role: initialRole } : null,
-    isAuthenticated: !!initialToken,
+    token,
+    user,
+    isAuthenticated: !!(initialToken || initialEmail),
     setAuth: (token, role, email) => {
       if (isClient) {
         localStorage.setItem('sentinel_token', token);

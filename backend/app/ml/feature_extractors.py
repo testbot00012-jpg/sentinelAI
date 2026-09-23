@@ -3,7 +3,7 @@ import math
 import numpy as np
 from urllib.parse import urlparse
 from collections import Counter
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 # Comprehensive URL shortening domains (30+ providers)
 SHORTENER_DOMAINS = {
@@ -564,3 +564,482 @@ def explain_apk_permissions(permissions: List[str]) -> Tuple[List[str], str]:
         category = "Clean / Legitimate Utility Application"
 
     return flagged, category
+
+
+# ============================================================================
+# 4. PAYMENT SCREENSHOT OCR & FRAUD TAMPERING DETECTOR
+# ============================================================================
+
+def extract_payment_receipt_amount(text: str) -> str:
+    """
+    Extracts the legitimate transaction amount from raw receipt text using
+    the same spatial heuristics and glyph de-aliasing as the on-device ReceiptSpatialSLM.
+    """
+    if not text:
+        return "Unknown"
+
+    # Non-amount exclusions (times, years, dates, masked bank accounts, UTRs)
+    time_matches = re.findall(r"\b\d{1,2}:\d{2}(?::\d{2})?\b", text)
+    time_numbers = set()
+    for tm in time_matches:
+        for p in tm.split(":"):
+            if p.strip().isdigit():
+                time_numbers.add(int(p.strip()))
+
+    years = {int(y) for y in re.findall(r"\b(20[1-3][0-9])\b", text)}
+
+    date_days = set()
+    for dd in re.findall(r"\b(\d{1,2})\s*(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)", text, re.I):
+        if dd.isdigit():
+            date_days.add(int(dd))
+
+    masked_acc_matches = re.findall(r"(?:[X*x•]{2,}|\.{3,}|A/c\s*|Account\s*|debited\s+from\s+|credited\s+to\s+)\s*(\d{2,6})\b", text, re.I)
+    masked_accs = set(masked_acc_matches)
+
+    phone_matches = re.findall(r"(?:\+?91[\s\.\-•*]*|\b)[0-9•*xX]{4,15}([0-9]{3,5})\b", text)
+    masked_accs.update(phone_matches)
+
+    utrs = set(re.findall(r"\b\d{12}\b", text))
+
+    def is_excluded(val_str: str) -> bool:
+        clean = val_str.replace(",", "").replace(" ", "").strip()
+        try:
+            val_num = float(clean)
+        except ValueError:
+            return True
+        int_val = int(val_num)
+        if val_num <= 0 or val_num > 10000000:
+            return True
+        if clean.startswith("0") and "." not in clean:
+            return True
+        if clean in utrs:
+            return True
+        if int_val in years:
+            return True
+        if clean in masked_accs or str(int_val) in masked_accs:
+            return True
+        if clean in ("91", "+91"):
+            return True
+        if int_val in time_numbers or int_val in date_days:
+            return True
+        return False
+
+    candidates = {}
+    val_to_fmt = {}
+
+    # 1. Explicit currency symbol matches (₹, ?, Rs, INR, $, €, £, and OCR 'F'/'f' misread of ₹)
+    for m in re.finditer(r"(?<![A-Za-z0-9])(?:[\$€£₹?]|rs\.?|inr|[Ff])\s*([0-9]{1,6}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)(?![A-Za-z0-9])", text, re.I):
+        num_str = m.group(1).replace(",", "")
+        if not is_excluded(num_str):
+            try:
+                v = float(num_str)
+                candidates[v] = candidates.get(v, 0) + 300
+                val_to_fmt[v] = f"₹{int(v):,}" if v.is_integer() else f"₹{v:,.2f}"
+            except ValueError:
+                pass
+
+    # 2. OCR '7' misread of Indian Rupee symbol (e.g. 7400 -> 400, 790 -> 90)
+    for m in re.finditer(r"(?<![A-Za-z0-9])7([0-9]{2,5})(?![A-Za-z0-9])", text):
+        num_str = m.group(1)
+        if not is_excluded(num_str):
+            try:
+                v = float(num_str)
+                candidates[v] = candidates.get(v, 0) + 200
+                if v not in val_to_fmt:
+                    val_to_fmt[v] = f"₹{int(v):,}"
+            except ValueError:
+                pass
+
+    # 3. Contextual search near action keywords
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    action_keywords = ["received from", "paid to", "payment to", "transfer to", "sent to", "debited from", "credited to", "amount", "total"]
+    for i, line in enumerate(lines):
+        ll = line.lower()
+        if any(kw in ll for kw in action_keywords):
+            for j in range(i, min(i + 4, len(lines))):
+                for nm in re.finditer(r"(?<![A-Za-z0-9])([0-9]{1,6}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)(?![A-Za-z0-9])", lines[j]):
+                    num_str = nm.group(1).replace(",", "")
+                    if not is_excluded(num_str):
+                        try:
+                            v = float(num_str)
+                            candidates[v] = candidates.get(v, 0) + 100
+                            if v not in val_to_fmt:
+                                val_to_fmt[v] = f"₹{int(v):,}" if v.is_integer() else f"₹{v:,.2f}"
+                        except ValueError:
+                            pass
+
+    # 4. Standalone decimals
+    for m in re.finditer(r"(?<![A-Za-z0-9])([0-9]{1,6}(?:,[0-9]{3})*\.[0-9]{2})(?![A-Za-z0-9])", text):
+        num_str = m.group(1).replace(",", "")
+        if not is_excluded(num_str):
+            try:
+                v = float(num_str)
+                candidates[v] = candidates.get(v, 0) + 150
+                if v not in val_to_fmt:
+                    val_to_fmt[v] = f"₹{v:,.2f}"
+            except ValueError:
+                pass
+
+    if not candidates:
+        return "Unknown"
+
+    best_val = max(candidates.keys(), key=lambda k: candidates[k])
+    return val_to_fmt.get(best_val, f"₹{int(best_val)}")
+
+
+def analyze_payment_screenshot_data(ocr_text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Analyzes OCR text and metadata from user-submitted payment screenshots
+    for manipulation artifacts, invalid reference schemes, and transaction fraud indicators.
+    Adheres to Screen 14 specification.
+    """
+    text = ocr_text or ""
+    text_lower = text.lower()
+    details = []
+    fraud_score = 10.0
+
+    # 1. Transaction Amount Extraction via SLM Heuristics
+    extracted_amount = extract_payment_receipt_amount(text)
+
+    # 2. Reference / UTR Number Extraction
+    utr_match = re.search(r"(?:utr|ref|reference|txn\s*id|transaction\s*id)[\s\:\#\-]*([a-zA-Z0-9]{8,24})", text, re.IGNORECASE)
+    extracted_utr = utr_match.group(1) if utr_match else None
+
+    # 3. Date & Timestamp Extraction
+    date_match = re.search(r"(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})|(?:\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4})", text, re.IGNORECASE)
+    extracted_date = date_match.group(0) if date_match else "Not found"
+
+    # 4. Transaction Status Indicators
+    status_success = any(w in text_lower for w in ["paid successfully", "payment completed", "successful", "transferred", "payment sent", "received"])
+    status_failed = any(w in text_lower for w in ["failed", "declined", "pending", "reversed"])
+
+    # 5. Detected Payment Ecosystem
+    ecosystem = "Generic Receipt"
+    if any(k in text_lower for k in ["gpay", "google pay", "tez"]):
+        ecosystem = "Google Pay"
+    elif "phonepe" in text_lower:
+        ecosystem = "PhonePe"
+    elif "paytm" in text_lower:
+        ecosystem = "Paytm"
+    elif "paypal" in text_lower:
+        ecosystem = "PayPal"
+    elif any(k in text_lower for k in ["chase", "quickpay", "zelle"]):
+        ecosystem = "Chase / Zelle"
+    elif any(k in text_lower for k in ["venmo", "cash app"]):
+        ecosystem = "Venmo / CashApp"
+    elif any(k in text_lower for k in ["upi", "npci", "bhim"]):
+        ecosystem = "UPI / NPCI Network"
+
+    # 6. Fraud & Manipulation Heuristic Checks
+    # Check A: Missing reference ID
+    if not extracted_utr:
+        fraud_score += 25.0
+        details.append("Missing Bank Reference ID: Legitimate payment receipts mandate a traceable UTR or transaction reference number.")
+    else:
+        # Check B: Standard UPI UTR validity (UPI UTR must be 12 numeric digits)
+        if "upi" in text_lower or ecosystem in ["Google Pay", "PhonePe", "Paytm", "UPI / NPCI Network"]:
+            if not (len(extracted_utr) == 12 and extracted_utr.isdigit()):
+                fraud_score += 45.0
+                details.append(f"Invalid UTR Format: Reference '{extracted_utr}' violates standard banking rules (must be exactly 12 numeric digits). High probability of synthetic screenshot generator.")
+
+    # Check C: Missing confirmation keywords
+    if not status_success and not status_failed:
+        fraud_score += 20.0
+        details.append("Unverified Status: Missing definitive payment confirmation wording or server completion stamp.")
+
+    # Check D: Template generator signature markers
+    fake_generator_markers = ["fake pay", "prank payment", "spoofpay", "payment screenshot maker", "sample only", "demo receipt"]
+    if any(m in text_lower for m in fake_generator_markers):
+        fraud_score = 98.0
+        details.insert(0, "Deceptive Tool Watermark: Text contains artifacts associated with known receipt fabrication tools.")
+
+    # Check E: Repeated or malformed punctuation
+    if text.count("..") > 1 or "$$" in text or "₹₹" in text:
+        fraud_score += 25.0
+        details.append("Font / Text Alignment Artifacts: Irregular symbol repetition indicative of edited or layered image text.")
+
+    final_score = round(min(max(fraud_score, 5.0), 99.0), 1)
+
+    if final_score < 30.0:
+        verdict = "Low Risk / Consistent Indicators"
+        confidence = 94.5
+        recom = "Screenshot exhibits standard transaction characteristics. Always verify actual credit in your bank app before releasing goods."
+    elif final_score < 65.0:
+        verdict = "Medium Risk / Inconsistent Layout"
+        confidence = 89.0
+        recom = "Discrepancies identified in reference ID or formatting. Do NOT accept as proof of payment until funds clear your bank account."
+    else:
+        verdict = "High Risk / Probable Fake Screenshot"
+        confidence = 96.8
+        recom = "Strong indicators of image manipulation or fabricated reference number. Do NOT release goods or transfer funds."
+
+    return {
+        "extracted_amount": extracted_amount,
+        "extracted_date": extracted_date,
+        "extracted_reference": extracted_utr or "None",
+        "ecosystem": ecosystem,
+        "fraud_score": final_score,
+        "classification": verdict,
+        "confidence": confidence,
+        "evidence": details if details else ["Standard visual formatting and valid reference structure observed."],
+        "recommended_action": recom,
+        "disclaimer": "Potential-risk assessment based on image indicators, not guaranteed proof of bank ledger settlement."
+    }
+
+
+# ============================================================================
+# 5. DEVICE SECURITY SIGNALS & TAMPERING EVALUATOR
+# ============================================================================
+
+def evaluate_device_security_signals(signals: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Assesses Android device security signals available through platform APIs.
+    Adheres to Screen 10 specification.
+    """
+    findings = []
+    risk_points = 0
+    confidence = 97.5
+
+    os_version = str(signals.get("os_version", "14"))
+    security_patch = str(signals.get("security_patch_level", "2024-01-01"))
+    screen_lock = bool(signals.get("screen_lock_enabled", True))
+    dev_options = bool(signals.get("developer_options_enabled", False))
+    usb_debugging = bool(signals.get("usb_debugging_enabled", False))
+    unknown_sources = bool(signals.get("unknown_sources_allowed", False))
+    device_admin_count = int(signals.get("device_admin_count", 0))
+    root_detected = bool(signals.get("root_detected", False))
+    play_protect = bool(signals.get("play_protect_enabled", True))
+    encrypted = bool(signals.get("encryption_enabled", True))
+
+    # 1. Root / Tampering Check (Critical)
+    if root_detected:
+        risk_points += 45
+        findings.append({
+            "severity": "Critical",
+            "title": "Device Root / System Tampering Detected",
+            "detail": "Su binary or rooting management framework discovered. Application sandbox security guarantees are compromised.",
+            "remedy": "Unroot device or flash genuine OEM firmware to prevent memory inspection by malicious apps."
+        })
+
+    # 2. Unknown Sources / Sideloading (High)
+    if unknown_sources:
+        risk_points += 25
+        findings.append({
+            "severity": "High",
+            "title": "Installation from Unknown Sources Enabled",
+            "detail": "Allows applications to be installed outside verified app stores without Play Protect pre-execution screening.",
+            "remedy": "Disable 'Install Unknown Apps' in Android Settings > Apps > Special app access."
+        })
+
+    # 3. Lock Screen Security (High)
+    if not screen_lock:
+        risk_points += 20
+        findings.append({
+            "severity": "High",
+            "title": "Device Lock Screen Disabled",
+            "detail": "Hardware keystore and device credentials are fully accessible if the device is lost or unattended.",
+            "remedy": "Configure a PIN, strong password, or biometric authentication in Android Security Settings."
+        })
+
+    # 4. USB Debugging Active (High)
+    if usb_debugging:
+        risk_points += 22
+        findings.append({
+            "severity": "High",
+            "title": "USB Debugging (ADB) Active - Attack Surface Exposed",
+            "detail": "Android Debug Bridge daemon (adbd) listening over USB (TCP port 5037). MITRE ATT&CK Mobile: T1401 (Exploit via USB) & T1630 (ADB Command Interpreter). Exposes full shell execution (adb shell), private database extraction (run-as/backup), and unauthorized APK sideloading if connected to untrusted hosts or public charging ports (Juice Jacking).",
+            "remedy": "Turn off USB Debugging immediately in Android Settings > Developer Options when leaving secure workstations. Revoke USB debugging authorizations periodically."
+        })
+
+    # 5. Developer Options Active (Low)
+    if dev_options and not usb_debugging:
+        risk_points += 5
+        findings.append({
+            "severity": "Low",
+            "title": "Developer Options Enabled",
+            "detail": "Developer mode unlocks system-level diagnostics and debugging hooks.",
+            "remedy": "Disable Developer Options in Settings if not required."
+        })
+
+    # 6. Play Protect Disabled (High)
+    if not play_protect:
+        risk_points += 20
+        findings.append({
+            "severity": "High",
+            "title": "Google Play Protect Disabled",
+            "detail": "Device is not receiving automatic background signature scans for malicious behavior.",
+            "remedy": "Enable Google Play Protect in the Play Store Settings."
+        })
+
+    # 7. Device Encryption State (Critical)
+    if not encrypted:
+        risk_points += 35
+        findings.append({
+            "severity": "Critical",
+            "title": "Storage Encryption Inactive",
+            "detail": "Internal storage data is stored in plaintext, vulnerable to direct chip-off or recovery readout.",
+            "remedy": "Enable Full Disk / File-Based Encryption in Device Settings."
+        })
+
+    # Calculate overall security posture score (0 - 100, where 100 is pristine)
+    security_score = max(5, 100 - risk_points)
+
+    if security_score >= 85:
+        posture = "Hardened / Secure"
+    elif security_score >= 60:
+        posture = "Moderate / Vulnerabilities Present"
+    else:
+        posture = "Compromised / High Threat Posture"
+
+    return {
+        "security_score": security_score,
+        "posture": posture,
+        "confidence": confidence,
+        "findings": findings,
+        "signals_evaluated": {
+            "os_version": os_version,
+            "security_patch_level": security_patch,
+            "screen_lock": screen_lock,
+            "usb_debugging": usb_debugging,
+            "unknown_sources": unknown_sources,
+            "root_detected": root_detected,
+            "play_protect": play_protect,
+            "encryption": encrypted
+        },
+        "recommendations_count": len(findings)
+    }
+
+
+# ============================================================================
+# 6. NETWORK SECURITY & ROGUE WI-FI DETECTOR
+# ============================================================================
+
+def evaluate_network_security_signals(network_info: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluates current Wi-Fi/cellular connection security, DNS integrity, and rogue AP signals.
+    Adheres to Screen 15 specification.
+    """
+    conn_type = str(network_info.get("connection_type", "WIFI")).upper()
+    ssid = str(network_info.get("ssid", "Current Network"))
+    encryption = str(network_info.get("encryption", "WPA2")).upper()
+    is_captive = bool(network_info.get("is_captive_portal", False))
+    vpn_active = bool(network_info.get("vpn_active", False))
+    dns_servers = network_info.get("dns_servers", ["8.8.8.8", "1.1.1.1"])
+
+    findings = []
+    risk_score = 10.0
+    confidence = 96.0
+
+    # 1. Unsecured Open Wi-Fi Check
+    if conn_type == "WIFI" and encryption in ["OPEN", "NONE", "WEP"]:
+        risk_score += 45.0
+        findings.append({
+            "severity": "High",
+            "title": "Unencrypted Public Wi-Fi Network",
+            "detail": f"Network '{ssid}' lacks WPA2/WPA3 encryption. Transmitted packets are visible to anyone in radio range.",
+            "remedy": "Activate Sentinel VPN immediately or disconnect from this wireless network."
+        })
+
+    # 2. Captive Portal Infiltration
+    if is_captive:
+        risk_score += 15.0
+        findings.append({
+            "severity": "Medium",
+            "title": "Captive Portal Redirection Active",
+            "detail": "Network requires authentication through a browser splash screen, which can be spoofed to harvest credentials.",
+            "remedy": "Do not enter primary email or social logins on network landing portals."
+        })
+
+    # 3. DNS Integrity Audit
+    TRUSTED_DNS = {"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9", "149.112.112.112", "208.67.222.222"}
+    untrusted_dns = [d for d in dns_servers if d not in TRUSTED_DNS and not d.startswith(("192.168.", "10.", "172."))]
+    if untrusted_dns:
+        risk_score += 25.0
+        findings.append({
+            "severity": "Medium",
+            "title": "Untrusted Upstream DNS Resolver",
+            "detail": f"DNS queries routed through non-standard server ({', '.join(untrusted_dns)}), presenting DNS hijacking risks.",
+            "remedy": "Configure Android Private DNS to use DNS-over-TLS (e.g., dns.quad9.net)."
+        })
+
+    # 4. VPN Protection Mitigation
+    if vpn_active:
+        risk_score = max(5.0, risk_score - 30.0)
+        findings.append({
+            "severity": "Informational",
+            "title": "Encrypted VPN Tunnel Active",
+            "detail": "Underlying network traffic is encapsulated in a cryptographic tunnel.",
+            "remedy": "Maintain VPN connection while using untrusted networks."
+        })
+
+    final_risk = round(min(max(risk_score, 5.0), 99.0), 1)
+
+    return {
+        "network_risk_score": final_risk,
+        "status": "Secure" if final_risk < 35 else ("Suspicious" if final_risk < 65 else "High Threat"),
+        "confidence": confidence,
+        "connection_type": conn_type,
+        "ssid": ssid,
+        "encryption": encryption,
+        "vpn_active": vpn_active,
+        "findings": findings,
+        "recommendation": "Network appears safe for normal traffic." if final_risk < 35 else "Enable Sentinel VPN protection to encrypt all outbound packets."
+    }
+
+
+# ============================================================================
+# 7. QR CODE DESTINATION & PAYLOAD ANALYZER
+# ============================================================================
+
+def analyze_qr_code_payload(payload: str) -> Dict[str, Any]:
+    """
+    Parses QR code contents, extracts URLs/intents, and runs threat heuristics.
+    Adheres to Screen 12 specification.
+    """
+    raw = payload.strip()
+    if not raw:
+        return {
+            "payload_type": "EMPTY",
+            "decoded_content": "",
+            "risk_level": "Informational",
+            "confidence": 100.0,
+            "threat_summary": "Empty QR code data.",
+            "details": []
+        }
+
+    details = []
+    confidence = 98.0
+
+    if raw.startswith(("http://", "https://", "www.")) or "." in raw.split("/")[0]:
+        payload_type = "URL / Web Link"
+        target_destination = raw
+        risk_level = "Medium"
+        threat_summary = "QR resolves to external web destination. Caution advised before browsing."
+        details.append("Direct URL navigation encoded in QR code.")
+    elif raw.startswith("upi://"):
+        payload_type = "UPI Financial Transfer"
+        risk_level = "Informational"
+        threat_summary = "QR encodes direct financial transaction request. Verify payee identity before confirming payment."
+        details.append("Direct UPI URI detected. Check payee VPA and amount carefully.")
+        target_destination = raw
+    elif raw.startswith("WIFI:"):
+        payload_type = "Wi-Fi Configuration"
+        risk_level = "Informational"
+        threat_summary = "QR configures wireless network connection."
+        target_destination = raw
+    else:
+        payload_type = "Plain Text / Custom Payload"
+        risk_level = "Safe"
+        threat_summary = "QR contains unformatted text."
+        target_destination = raw
+
+    return {
+        "payload_type": payload_type,
+        "decoded_content": raw,
+        "target_destination": target_destination,
+        "risk_level": risk_level,
+        "confidence": confidence,
+        "threat_summary": threat_summary,
+        "details": details if details else ["Standard formatting observed."]
+    }
+

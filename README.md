@@ -45,7 +45,7 @@ Sentinel AI is engineered with modern, scalable, and resilient technologies acro
   - Passlib & Bcrypt (Password hashing)
 - **Data Schemas**: Pydantic v2 & Pydantic-Settings (Strict runtime validation)
 - **Reporting**: ReportLab 4.1 (On-the-fly PDF threat intelligence reports)
-- **Third-Party Feeds**: AlienVault OTX API, URLScan.io API, Groq AI LLM Inference API
+- **Third-Party Feeds & Threat Feeds**: AlienVault OTX API, URLScan.io API, Sentinel Local Neural CyberLLM In-Process Inference Engine (100% self-hosted, zero external generative-AI API dependencies)
 
 ### 4. DevSecOps, Automation & Testing
 - **Containerization**: Docker & Docker Compose (Multi-stage builds)

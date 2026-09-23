@@ -36,6 +36,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
+        )
     }
     buildFeatures {
         compose = true
@@ -68,6 +72,13 @@ dependencies {
     // Retrofit (Network connection)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
+    // ZXing for Offline QR Code Scanning
+    implementation("com.google.zxing:core:3.5.3")
+
+    // ML Kit On-Device Text Recognition for Payment Screenshot OCR
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
 
     // Firebase Services
     implementation(platform("com.google.firebase:firebase-bom:32.8.0"))

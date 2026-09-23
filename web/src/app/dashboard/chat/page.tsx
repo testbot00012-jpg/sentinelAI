@@ -22,7 +22,7 @@ export default function ChatbotPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
-      content: "Hello Agent! I am **Sentinel AI Intel**, powered by high-speed Groq AI inference. I can assist you with real-time threat analysis, phishing verification, dangerous Android permissions, and financial fraud defense. How can I protect you today?"
+      content: "Hello Agent! I am **Sentinel AI CyberLLM**, powered by our local in-process cybersecurity neural inference engine. I operate 100% locally to protect your data privacy. I can assist you with real-time threat analysis, phishing verification, dangerous Android permissions, and financial fraud defense. How can I protect you today?"
     }
   ]);
   const [input, setInput] = useState('');
@@ -53,7 +53,8 @@ export default function ChatbotPage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content }))
+          message: textToSend,
+          history: messages.slice(-6).map(m => ({ role: m.role, content: m.content }))
         })
       });
 
@@ -68,7 +69,7 @@ export default function ChatbotPage() {
       let fallback = "Sentinel Core Threat Advisory: Always verify URLs before opening. Never grant Accessibility or Overlay permissions to sideloaded APKs. In UPI payments, remember that entering your PIN always DEBITS money from your account.";
       const q = textToSend.toLowerCase();
       if (q.includes("phish") || q.includes("url")) {
-        fallback = "🛡️ **Phishing Detection Advisory**:\nSentinel AI inspects 12 deterministic indicators: deceptive subdomains, raw IP hosts, suspicious TLDs (.xyz, .top, .ru), credential harvesting keywords, and TLS certificate anomalies.";
+        fallback = "🛡️ **Phishing Detection Advisory**:\nSentinel AI inspects 42 deterministic indicators: deceptive subdomains, raw IP hosts, suspicious TLDs (.xyz, .top, .ru), credential harvesting keywords, and TLS certificate anomalies.";
       } else if (q.includes("accessib") || q.includes("overlay") || q.includes("permission")) {
         fallback = "⚠️ **Dangerous Android Permissions**:\n`BIND_ACCESSIBILITY_SERVICE` and `SYSTEM_ALERT_WINDOW` allow rogue apps to read everything on your screen (including typed OTPs and UPI PINs) and draw fake overlay login prompts over official banking apps.";
       } else if (q.includes("upi") || q.includes("pin") || q.includes("scam") || q.includes("payment")) {
@@ -92,7 +93,7 @@ export default function ChatbotPage() {
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-white">SENTINEL AI THREAT INTEL</h2>
               <span className="text-[10px] font-mono bg-success/15 text-success border border-success/30 px-2 py-0.5 rounded font-bold">
-                GROQ LLAMA-3.3
+                SENTINEL LOCAL LLM v2.5
               </span>
             </div>
             <p className="text-xs text-gray-400">Ask any question regarding phishing, malware APKs, or mobile fraud</p>

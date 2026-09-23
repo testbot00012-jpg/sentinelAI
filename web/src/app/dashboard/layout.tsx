@@ -6,12 +6,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Shield, LayoutDashboard, Globe, MessageSquare, Package,
   User, LogOut, Menu, X, ChevronRight, Zap, Settings,
-  Bot, CreditCard, Cpu
+  Bot, CreditCard, Cpu, ShieldCheck, History
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+  { href: '/dashboard/history', label: 'Scan History', icon: History },
   { href: '/dashboard/chat', label: 'AI Security Intel', icon: Bot },
   { href: '/dashboard/scanner', label: 'URL Scanner', icon: Globe },
   { href: '/dashboard/sms', label: 'SMS Analyzer', icon: MessageSquare },
@@ -24,8 +25,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (!isAuthenticated) {
       router.push('/login');
     }
@@ -36,6 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
+  if (!mounted) return null;
   if (!isAuthenticated) return null;
 
   return (
@@ -110,7 +114,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {[
                 { label: 'Threat Engine', val: 98 },
                 { label: 'NLP Scanner', val: 94 },
-                { label: 'APK Auditor', val: 87 },
+                { label: 'Payment Shield', val: 96 },
               ].map((engine) => (
                 <div key={engine.label}>
                   <div className="flex justify-between text-[10px] text-gray-500 mb-1">

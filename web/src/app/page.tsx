@@ -4,11 +4,11 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
   Shield, Terminal, Zap, Globe, Cpu, AlertTriangle, 
-  ChevronRight, Lock, Eye, CheckCircle2, HelpCircle, Mail 
+  ChevronRight, Lock, Eye, CheckCircle2, HelpCircle, Mail, CreditCard
 } from 'lucide-react';
 
 export default function LandingPage() {
-  const [activeTab, setActiveTab] = useState<'phish' | 'sms' | 'apk'>('phish');
+  const [activeTab, setActiveTab] = useState<'phish' | 'sms' | 'payment'>('phish');
 
   return (
     <div className="relative min-h-screen bg-background text-white cyber-grid selection:bg-primary selection:text-background">
@@ -99,7 +99,7 @@ export default function LandingPage() {
             {[
               { id: 'phish', label: 'URL Phishing Scan' },
               { id: 'sms', label: 'SMS Scam NLP' },
-              { id: 'apk', label: 'APK Risk Profile' }
+              { id: 'payment', label: 'Payment Fraud Shield' }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -179,38 +179,33 @@ export default function LandingPage() {
               </div>
             )}
 
-            {activeTab === 'apk' && (
+            {activeTab === 'payment' && (
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Requested App Permissions Checklist</label>
-                  <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-300">
-                    <div className="flex items-center gap-2 bg-background p-2.5 rounded border border-white/5">
-                      <span className="text-danger">●</span> BIND_ACCESSIBILITY_SERVICE
-                    </div>
-                    <div className="flex items-center gap-2 bg-background p-2.5 rounded border border-white/5">
-                      <span className="text-danger">●</span> SEND_SMS
-                    </div>
-                    <div className="flex items-center gap-2 bg-background p-2.5 rounded border border-white/5">
-                      <span className="text-warning">●</span> ACCESS_FINE_LOCATION
-                    </div>
-                    <div className="flex items-center gap-2 bg-background p-2.5 rounded border border-white/5">
-                      <span className="text-success">●</span> INTERNET
-                    </div>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest font-mono">Payment Receipt Text & Metadata</label>
+                  <textarea 
+                    rows={3}
+                    defaultValue="Paid to Metro Retail Store • ₹120 • State Bank of India • UTR: 426477819203 • Transfer Completed"
+                    className="w-full bg-background/80 border border-white/10 rounded-lg p-4 text-sm text-gray-200 focus:outline-none focus:border-primary font-mono"
+                  />
+                  <div className="flex justify-end">
+                    <button className="px-6 py-3 bg-primary text-background font-bold text-sm rounded-lg hover:opacity-90 transition-opacity">
+                      Verify Receipt & UTR
+                    </button>
                   </div>
                 </div>
                 <div className="glass-panel p-4 rounded-lg bg-black/40 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold">Threat Level Rating:</span>
-                    <span className="px-2.5 py-1 text-xs font-extrabold uppercase rounded bg-danger/20 text-danger">
-                      Critical Risk: 85/100
+                    <span className="text-sm font-semibold">Payment Shield Verdict:</span>
+                    <span className="px-2.5 py-1 text-xs font-extrabold uppercase rounded bg-success/20 text-success">
+                      Safe / Verified (₹120)
                     </span>
                   </div>
-                  <p className="text-xs text-warning font-semibold">
-                    Category: Ransomware / Banking Trojan Agent
-                  </p>
-                  <p className="text-xs text-gray-400 leading-relaxed font-mono">
-                    Accessibility bindings allow background overlays capable of capturing user logins, while SEND_SMS permissions pose high bill-fraud vectors.
-                  </p>
+                  <div className="text-xs text-gray-400 space-y-1.5 font-mono">
+                    <p>• Extracted Amount: ₹120 via ReceiptSpatialSLM</p>
+                    <p>• 12-Digit Banking UTR Structure: 426477819203 (Verified NPCI format)</p>
+                    <p>• Settlement Confidence: 96.8% (Authentic transaction geometry)</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -238,9 +233,9 @@ export default function LandingPage() {
               color: "border-primary/20 hover:border-primary/50 text-primary"
             },
             {
-              icon: Cpu,
-              title: "Android Permission Auditor",
-              desc: "Monitors app metadata structures, warning users of suspicious background access tokens, adware and trojan processes.",
+              icon: CreditCard,
+              title: "Payment & Banking Fraud Shield",
+              desc: "Receipt OCR spatial analysis, UPI VPA deception detection, and financial extortion defenses protect against fraudulent transfers.",
               color: "border-secondary/20 hover:border-secondary/50 text-secondary"
             },
             {
