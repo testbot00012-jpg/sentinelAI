@@ -60,9 +60,16 @@ Sentinel AI is engineered with modern, scalable, and resilient technologies acro
 
 ## 🌐 How to Run the Website (Web Dashboard & API)
 
-You can run the web dashboard locally in development mode, build it for production, or launch the entire ecosystem with Docker Compose.
+### ⚡ Quickstart: Zero-Configuration 1-Click Launch (Windows / Mac / Linux)
+All database connection strings, threat intelligence API keys, pre-trained ML models, and Firebase client configurations are pre-configured out-of-the-box. When you clone this repository to another system, it runs automatically without generating or entering any keys!
 
-### Method A: Running Locally (Development Mode)
+- **On Windows**: Double-click `start_sentinel.bat` (or run `.\start_sentinel.bat` in Terminal).
+- **On Linux / macOS**: Run `chmod +x start_sentinel.sh && ./start_sentinel.sh`.
+- **With Docker**: Run `docker-compose up -d --build`.
+
+---
+
+### Method A: Running Locally (Manual Development Mode)
 
 #### Prerequisites
 - **Node.js**: v18.17.0+ or v20+ installed ([Download Node.js](https://nodejs.org/))

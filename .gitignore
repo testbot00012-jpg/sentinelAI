@@ -32,6 +32,7 @@ local.properties
 # Local temporary and generated files
 *.png
 scratch/
-web/.env.local
 web/tsconfig.tsbuildinfo
+~$*
+*.tmp
 
