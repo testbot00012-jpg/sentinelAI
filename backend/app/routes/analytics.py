@@ -5,6 +5,7 @@ from app.core.security import get_current_user, verify_firebase_token
 import datetime
 import re
 from typing import Dict, Any, Optional
+from app.routes.scan import format_local_timestamp, to_iso_utc_string
 
 router = APIRouter(prefix="/api/analytics", tags=["Device Diagnostics & Analytics"])
 
@@ -150,12 +151,15 @@ async def get_user_metrics(
             raw_threats = await threats_cursor.to_list(10)
             for t in raw_threats:
                 det_time = t.get("detected_at")
-                time_str = det_time.strftime("%d %b, %I:%M %p") if isinstance(det_time, datetime.datetime) else "Recent"
+                iso_det = to_iso_utc_string(det_time)
+                time_str = format_local_timestamp(det_time)
                 desc = t.get("description", "")
                 src = desc.replace("User scanned a phishing URL: ", "").replace("User scanned a suspicious URL: ", "") or t.get("source", "Web Scanner")
                 recent_threats.append({
                     "id": str(t["_id"]),
                     "time": time_str,
+                    "detected_at": iso_det,
+                    "created_at": iso_det,
                     "type": t.get("threat_type", "Phishing Threat"),
                     "source": src,
                     "score": "96%" if t.get("severity") == "High" else "75%",
@@ -175,11 +179,13 @@ async def get_user_metrics(
             c_hist = db["scan_history"].find(user_filter).sort("scanned_at", -1).limit(10)
             for s in await c_hist.to_list(10):
                 sc_time = s.get("scanned_at") or s.get("created_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else "Recent"
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(s.get("timestamp")) or format_local_timestamp(sc_time))
                 status = s.get("verdict", "Safe")
                 unified_scans.append({
                     "id": str(s["_id"]),
                     "time": time_str,
+                    "created_at": iso_str,
                     "scan_type": s.get("scan_type", "Security Scan"),
                     "url": s.get("target", "System Inspection"),
                     "status": status,
@@ -192,11 +198,13 @@ async def get_user_metrics(
             c_urls = db["url_scans"].find(user_filter).sort("scanned_at", -1).limit(10)
             for s in await c_urls.to_list(10):
                 sc_time = s.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else "Recent"
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(s.get("timestamp")) or format_local_timestamp(sc_time))
                 status = s.get("status", "Safe")
                 unified_scans.append({
                     "id": str(s["_id"]),
                     "time": time_str,
+                    "created_at": iso_str,
                     "scan_type": "URL Phishing Scanner",
                     "url": s.get("url", ""),
                     "status": status,
@@ -209,13 +217,15 @@ async def get_user_metrics(
             c_fraud = db["fraud_scans"].find(user_filter).sort("scanned_at", -1).limit(10)
             for s in await c_fraud.to_list(10):
                 sc_time = s.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else "Recent"
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(s.get("timestamp")) or format_local_timestamp(sc_time))
                 prob = round(float(s.get("scam_probability", 5)))
                 raw_text = s.get("content", "")
                 snippet = (raw_text[:40] + "...") if len(raw_text) > 40 else raw_text
                 unified_scans.append({
                     "id": str(s["_id"]),
                     "time": time_str,
+                    "created_at": iso_str,
                     "scan_type": f"{s.get('scan_type', 'SMS')} Scam Analyzer",
                     "url": snippet,
                     "status": s.get("classification", "Scam"),
@@ -228,13 +238,15 @@ async def get_user_metrics(
             c_pay = db["payment_scans"].find(user_filter).sort("scanned_at", -1).limit(10)
             for s in await c_pay.to_list(10):
                 sc_time = s.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else "Recent"
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(s.get("timestamp")) or format_local_timestamp(sc_time))
                 amt = s.get("extracted_amount", "Receipt")
                 eco = s.get("ecosystem", "UPI")
                 f_score = round(float(s.get("fraud_score", 10)))
                 unified_scans.append({
                     "id": str(s["_id"]),
                     "time": time_str,
+                    "created_at": iso_str,
                     "scan_type": "Payment Screenshot Shield",
                     "url": f"{amt} • {eco}",
                     "status": s.get("classification", "Verified"),

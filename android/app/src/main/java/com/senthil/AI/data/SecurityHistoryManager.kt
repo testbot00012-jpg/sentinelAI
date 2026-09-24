@@ -17,7 +17,8 @@ data class SecurityHistoryItem(
     val verdict: String,
     val score: Int = 100,
     val severity: String = "Low", // "Safe", "Low", "Medium", "High", "Critical"
-    val timestamp: String = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+    val timestamp: String = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date()),
+    val createdAt: String = ""
 )
 
 object SecurityHistoryManager {
@@ -73,12 +74,14 @@ object SecurityHistoryManager {
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentList = getHistory(context).toMutableList()
+        val nowIso = try { java.time.Instant.now().toString() } catch (e: Exception) { "" }
         val newItem = SecurityHistoryItem(
             scanType = scanType,
             target = target,
             verdict = verdict,
             score = score,
-            severity = severity
+            severity = severity,
+            createdAt = nowIso
         )
         currentList.add(0, newItem) // Most recent first
         // Retain last 50 entries locally
@@ -125,13 +128,65 @@ object SecurityHistoryManager {
         }
     }
 
+    fun formatScanTimestamp(rawTimestamp: String?, createdAt: String?): String {
+        val source = if (!createdAt.isNullOrBlank()) createdAt else rawTimestamp
+        if (!source.isNullOrBlank()) {
+            val clean = source.trim()
+            if (clean.contains("T") || (clean.contains("-") && clean.contains(":"))) {
+                try {
+                    val isoString = if (!clean.endsWith("Z") && !clean.contains("+") && !clean.matches(Regex(".*-\\d{2}:\\d{2}$"))) {
+                        clean.replace(" ", "T") + "Z"
+                    } else {
+                        clean.replace(" ", "T")
+                    }
+                    val instant = java.time.Instant.parse(isoString)
+                    val formatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM, hh:mm a", Locale.getDefault())
+                        .withZone(java.time.ZoneId.systemDefault())
+                    return formatter.format(instant)
+                } catch (ignored: Exception) {}
+
+                val isoFormats = arrayOf(
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
+                    "yyyy-MM-dd'T'HH:mm:ss.SSS",
+                    "yyyy-MM-dd'T'HH:mm:ss",
+                    "yyyy-MM-dd HH:mm:ss"
+                )
+                val withoutZ = clean.replace("Z", "")
+                for (pattern in isoFormats) {
+                    try {
+                        val sdf = SimpleDateFormat(pattern, Locale.US)
+                        sdf.timeZone = TimeZone.getTimeZone("UTC")
+                        val date = sdf.parse(withoutZ)
+                        if (date != null) {
+                            val localFormat = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+                            localFormat.timeZone = TimeZone.getDefault()
+                            return localFormat.format(date)
+                        }
+                    } catch (ignored: Exception) {}
+                }
+            }
+        }
+
+        if (!rawTimestamp.isNullOrBlank() && rawTimestamp != "Recent") {
+            return rawTimestamp
+        }
+        return SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date())
+    }
+
     @Synchronized
     fun getHistory(context: Context): List<SecurityHistoryItem> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<SecurityHistoryItem>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
+            val list: List<SecurityHistoryItem> = gson.fromJson(json, type) ?: emptyList()
+            list.map {
+                if (it.createdAt.isNotBlank()) {
+                    it.copy(timestamp = formatScanTimestamp(it.timestamp, it.createdAt))
+                } else {
+                    it
+                }
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -164,7 +219,8 @@ object SecurityHistoryManager {
                     verdict = it.verdict,
                     score = it.score,
                     severity = it.severity,
-                    timestamp = it.timestamp
+                    timestamp = formatScanTimestamp(it.timestamp, it.created_at),
+                    createdAt = it.created_at
                 )
             }
             saveHistoryList(context, remoteItems)

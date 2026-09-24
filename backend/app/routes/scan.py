@@ -23,6 +23,57 @@ import re
 router = APIRouter(prefix="/api/scan", tags=["Security Intelligent Scans"])
 ml_engine = SentinelMLEngine()
 
+def to_iso_utc_string(dt: Any) -> str:
+    """Converts a datetime or ISO string to ISO 8601 UTC representation ending in Z."""
+    if not dt:
+        return datetime.datetime.utcnow().isoformat() + "Z"
+    if isinstance(dt, datetime.datetime):
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return dt.isoformat() + "Z"
+    if isinstance(dt, str):
+        clean = dt.strip()
+        if clean.endswith("Z"):
+            return clean
+        if "+" in clean or clean.endswith("-00:00"):
+            try:
+                parsed = datetime.datetime.fromisoformat(clean)
+                utc_dt = parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                return utc_dt.isoformat() + "Z"
+            except Exception:
+                return clean
+        return clean.replace(" ", "T") + "Z"
+    return str(dt)
+
+def format_local_timestamp(dt: Any) -> str:
+    """Formats UTC datetime or ISO string into the user's local timezone (IST, UTC+5:30), matching phone & web display."""
+    if not dt:
+        return "Recent"
+
+    if isinstance(dt, str):
+        dt_str = dt.strip()
+        if re.match(r'^\d{1,2}\s+[A-Za-z]{3},\s+\d{1,2}:\d{2}\s+(?:AM|PM|am|pm)$', dt_str):
+            return dt_str
+        if "T" in dt_str or (len(dt_str) >= 19 and "-" in dt_str and ":" in dt_str):
+            try:
+                clean = dt_str.replace("Z", "+00:00")
+                parsed = datetime.datetime.fromisoformat(clean)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+                ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+                return parsed.astimezone(ist).strftime("%d %b, %I:%M %p")
+            except Exception:
+                pass
+        return dt_str
+
+    if not isinstance(dt, datetime.datetime):
+        return str(dt)
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    return dt.astimezone(ist).strftime("%d %b, %I:%M %p")
+
 # ============================================================================
 # 1. URL PHISHING SCANNER (Screen 11)
 # ============================================================================
@@ -51,6 +102,8 @@ async def scan_url(
     if not user_id and user_email:
         user_id = f"user_{user_email}"
 
+    now = datetime.datetime.utcnow()
+    time_str = format_local_timestamp(now)
     scan_id = str(ObjectId())
     db_scan = {
         "_id": ObjectId(scan_id),
@@ -60,7 +113,8 @@ async def scan_url(
         "status": result["status"],
         "score": result["score"],
         "details": result["details"],
-        "scanned_at": datetime.datetime.utcnow()
+        "timestamp": time_str,
+        "scanned_at": now
     }
     if db is not None:
         try:
@@ -117,6 +171,8 @@ async def scan_fraud(
     if not user_id and user_email:
         user_id = f"user_{user_email}"
 
+    now = datetime.datetime.utcnow()
+    time_str = format_local_timestamp(now)
     scan_id = str(ObjectId())
     db_scan = {
         "_id": ObjectId(scan_id),
@@ -127,7 +183,8 @@ async def scan_fraud(
         "scam_probability": result["scam_probability"],
         "classification": result["classification"],
         "explanation": result["explanation"],
-        "scanned_at": datetime.datetime.utcnow()
+        "timestamp": time_str,
+        "scanned_at": now
     }
     if db is not None:
         try:
@@ -196,6 +253,8 @@ async def scan_apk(
     scan_id = str(ObjectId())
     if db is not None:
         try:
+            now = datetime.datetime.utcnow()
+            time_str = format_local_timestamp(now)
             db_scan = {
                 "_id": ObjectId(scan_id),
                 "user_id": user_id or "anonymous",
@@ -208,7 +267,8 @@ async def scan_apk(
                 "total_permissions_scanned": result["total_permissions_scanned"],
                 "status": result["status"],
                 "origin": result.get("origin", "Google Play Store"),
-                "scanned_at": datetime.datetime.utcnow()
+                "timestamp": time_str,
+                "scanned_at": now
             }
             await db["apk_scans"].insert_one(db_scan)
 
@@ -263,6 +323,8 @@ async def scan_payment_screenshot(
     scan_id = str(ObjectId())
     if db is not None:
         try:
+            now = datetime.datetime.utcnow()
+            time_str = format_local_timestamp(now)
             db_record = {
                 "_id": ObjectId(scan_id),
                 "user_id": user_id or "anonymous",
@@ -272,7 +334,8 @@ async def scan_payment_screenshot(
                 "ecosystem": result["ecosystem"],
                 "fraud_score": result["fraud_score"],
                 "classification": result["classification"],
-                "scanned_at": datetime.datetime.utcnow()
+                "timestamp": time_str,
+                "scanned_at": now
             }
             await db["payment_scans"].insert_one(db_record)
 
@@ -391,6 +454,7 @@ def _build_user_query(user_email: Optional[str], user_id: Optional[str]) -> Opti
         match_conditions.append({"user_id": str(user_id)})
     return {"$or": match_conditions} if match_conditions else None
 
+
 @router.get("/history", response_model=SecurityHistoryListResponse)
 async def get_scan_history(
     authorization: Optional[str] = Header(None),
@@ -423,7 +487,8 @@ async def get_scan_history(
             cursor_hist = db["scan_history"].find(user_query).sort("scanned_at", -1).limit(50)
             for doc in await cursor_hist.to_list(50):
                 sc_time = doc.get("scanned_at") or doc.get("created_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else str(sc_time)
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(doc.get("timestamp")) or format_local_timestamp(sc_time))
                 all_items.append({
                     "id": str(doc["_id"]),
                     "scan_type": doc.get("scan_type", "Security Scan"),
@@ -432,7 +497,7 @@ async def get_scan_history(
                     "score": int(doc.get("score", 100)),
                     "severity": doc.get("severity", "Safe"),
                     "timestamp": time_str,
-                    "created_at": sc_time.isoformat() if isinstance(sc_time, datetime.datetime) else str(sc_time),
+                    "created_at": iso_str,
                     "_dt": sc_time if isinstance(sc_time, datetime.datetime) else datetime.datetime.min
                 })
 
@@ -440,7 +505,8 @@ async def get_scan_history(
             cursor_urls = db["url_scans"].find(user_query).sort("scanned_at", -1).limit(50)
             for doc in await cursor_urls.to_list(50):
                 sc_time = doc.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else str(sc_time)
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(doc.get("timestamp")) or format_local_timestamp(sc_time))
                 status = doc.get("status", "Safe")
                 score_num = round(float(doc.get("score", 5)))
                 all_items.append({
@@ -451,7 +517,7 @@ async def get_scan_history(
                     "score": score_num,
                     "severity": "Critical" if status == "Phishing" else ("Medium" if status == "Suspicious" else "Safe"),
                     "timestamp": time_str,
-                    "created_at": sc_time.isoformat() if isinstance(sc_time, datetime.datetime) else str(sc_time),
+                    "created_at": iso_str,
                     "_dt": sc_time if isinstance(sc_time, datetime.datetime) else datetime.datetime.min
                 })
 
@@ -459,7 +525,8 @@ async def get_scan_history(
             cursor_fraud = db["fraud_scans"].find(user_query).sort("scanned_at", -1).limit(50)
             for doc in await cursor_fraud.to_list(50):
                 sc_time = doc.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else str(sc_time)
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(doc.get("timestamp")) or format_local_timestamp(sc_time))
                 prob = round(float(doc.get("scam_probability", 5)))
                 raw_text = doc.get("content", "")
                 snippet = (raw_text[:45] + "...") if len(raw_text) > 45 else raw_text
@@ -471,7 +538,7 @@ async def get_scan_history(
                     "score": prob,
                     "severity": "Critical" if prob >= 75 else ("High" if prob >= 50 else "Safe"),
                     "timestamp": time_str,
-                    "created_at": sc_time.isoformat() if isinstance(sc_time, datetime.datetime) else str(sc_time),
+                    "created_at": iso_str,
                     "_dt": sc_time if isinstance(sc_time, datetime.datetime) else datetime.datetime.min
                 })
 
@@ -479,7 +546,8 @@ async def get_scan_history(
             cursor_pay = db["payment_scans"].find(user_query).sort("scanned_at", -1).limit(50)
             for doc in await cursor_pay.to_list(50):
                 sc_time = doc.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else str(sc_time)
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(doc.get("timestamp")) or format_local_timestamp(sc_time))
                 amt = doc.get("extracted_amount", "Unknown")
                 eco = doc.get("ecosystem", "UPI Receipt")
                 f_score = round(float(doc.get("fraud_score", 10)))
@@ -491,7 +559,7 @@ async def get_scan_history(
                     "score": f_score,
                     "severity": "Critical" if f_score >= 70 else ("High" if f_score >= 40 else "Safe"),
                     "timestamp": time_str,
-                    "created_at": sc_time.isoformat() if isinstance(sc_time, datetime.datetime) else str(sc_time),
+                    "created_at": iso_str,
                     "_dt": sc_time if isinstance(sc_time, datetime.datetime) else datetime.datetime.min
                 })
 
@@ -499,7 +567,8 @@ async def get_scan_history(
             cursor_apk = db["apk_scans"].find(user_query).sort("scanned_at", -1).limit(50)
             for doc in await cursor_apk.to_list(50):
                 sc_time = doc.get("scanned_at") or datetime.datetime.utcnow()
-                time_str = sc_time.strftime("%d %b, %I:%M %p") if isinstance(sc_time, datetime.datetime) else str(sc_time)
+                iso_str = to_iso_utc_string(sc_time)
+                time_str = format_local_timestamp(sc_time) if isinstance(sc_time, datetime.datetime) else (format_local_timestamp(doc.get("timestamp")) or format_local_timestamp(sc_time))
                 app_n = doc.get("app_name", "Application")
                 pkg = doc.get("package_name", "")
                 m_score = round(float(doc.get("malware_score", 10)))
@@ -511,7 +580,7 @@ async def get_scan_history(
                     "score": m_score,
                     "severity": "Critical" if m_score >= 75 else ("High" if m_score >= 50 else "Safe"),
                     "timestamp": time_str,
-                    "created_at": sc_time.isoformat() if isinstance(sc_time, datetime.datetime) else str(sc_time),
+                    "created_at": iso_str,
                     "_dt": sc_time if isinstance(sc_time, datetime.datetime) else datetime.datetime.min
                 })
         except Exception as e:
@@ -562,7 +631,7 @@ async def record_scan_history_event(
         user_id = f"user_{user_email}"
 
     now = datetime.datetime.utcnow()
-    time_str = req.timestamp or now.strftime("%d %b, %I:%M %p")
+    time_str = req.timestamp or format_local_timestamp(now)
 
     scan_id = str(ObjectId())
     doc = {
@@ -606,7 +675,7 @@ async def record_scan_history_event(
         "score": doc["score"],
         "severity": doc["severity"],
         "timestamp": time_str,
-        "created_at": now.isoformat()
+        "created_at": to_iso_utc_string(now)
     }
 
 @router.delete("/history/{item_id}")

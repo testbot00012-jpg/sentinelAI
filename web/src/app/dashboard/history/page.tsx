@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { apiUrl } from '@/lib/api';
+import { formatScanTime } from '@/lib/dateUtils';
 import Link from 'next/link';
 
 interface HistoryItem {
@@ -283,7 +284,7 @@ export default function SecurityHistoryPage() {
               {filteredItems.map((item) => (
                 <tr key={item.id} className="hover:bg-white/2 transition-colors">
                   <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">
-                    {item.timestamp}
+                    {formatScanTime(item.timestamp, item.created_at)}
                   </td>
                   <td className="py-3.5">
                     <div className="flex items-center gap-2">

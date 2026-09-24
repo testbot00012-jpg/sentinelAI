@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import { apiUrl } from '@/lib/api';
+import { formatScanTime } from '@/lib/dateUtils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import Link from 'next/link';
 
@@ -407,7 +408,7 @@ export default function Dashboard() {
             {recentThreats.length > 0 ? (
               recentThreats.map((log: any, i: number) => (
                 <tr key={log.id || i} className="hover:bg-white/2 transition-colors">
-                  <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{log.time}</td>
+                  <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{formatScanTime(log.time, log.detected_at || log.created_at)}</td>
                   <td className="py-3.5">
                     <span className={`px-2.5 py-1 text-xs font-bold rounded ${log.severity === 'danger' ? 'bg-danger/15 text-danger border border-danger/30' : 'bg-warning/15 text-warning border border-warning/30'}`}>
                       {log.type}
@@ -496,7 +497,7 @@ export default function Dashboard() {
                 const isThreat = scan.status === 'Phishing' || scan.status === 'Suspicious';
                 return (
                   <tr key={scan.id || i} className="hover:bg-white/2 transition-colors">
-                    <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{scan.time}</td>
+                    <td className="py-3.5 pl-1 text-xs text-gray-400 font-mono whitespace-nowrap">{formatScanTime(scan.time, scan.created_at)}</td>
                     <td className="py-3.5 text-xs text-white font-mono truncate max-w-[280px]">{scan.url}</td>
                     <td className="py-3.5">
                       <span className={`px-2 py-0.5 text-xs font-bold rounded ${isThreat ? 'bg-danger/15 text-danger border border-danger/30' : 'bg-success/15 text-success border border-success/30'}`}>
